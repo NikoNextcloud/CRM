@@ -54,6 +54,17 @@ type CrmAction =
       };
     }
   | {
+      action: "updateNote";
+      id: string;
+      payload: {
+        body: string;
+      };
+    }
+  | {
+      action: "deleteNote";
+      id: string;
+    }
+  | {
       action: "createCalendarNote";
       payload: {
         customer_id?: string | null;
@@ -62,6 +73,32 @@ type CrmAction =
         body?: string;
         start_date: string;
         end_date: string;
+      };
+    }
+  | {
+      action: "updateCalendarNote";
+      id: string;
+      payload: {
+        customer_id?: string | null;
+        order_id?: string | null;
+        title: string;
+        body?: string;
+        start_date: string;
+        end_date: string;
+      };
+    }
+  | {
+      action: "deleteCalendarNote";
+      id: string;
+    }
+  | {
+      action: "createReminder";
+      payload: {
+        customer_id?: string | null;
+        order_id?: string | null;
+        title: string;
+        description?: string;
+        due_at: string;
       };
     };
 
@@ -277,6 +314,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ data });
   }
 
+  if (body.action === "updateNote") {
+    const { data, error } = await supabase.from("notes").update(body.payload).eq("id", body.id).select().single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ data });
+  }
+
+  if (body.action === "deleteNote") {
+    const { error } = await supabase.from("notes").delete().eq("id", body.id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ data: { id: body.id } });
+  }
+
   if (body.action === "createCalendarNote") {
     const { data, error } = await supabase.from("calendar_notes").insert(body.payload).select().single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -288,6 +337,38 @@ export async function POST(request: Request) {
         event_type: "note",
         title: "Добавена календарна бележка",
         description: `${body.payload.title} (${body.payload.start_date} - ${body.payload.end_date})`
+      });
+    }
+
+    return NextResponse.json({ data });
+  }
+
+  if (body.action === "updateCalendarNote") {
+    const { data, error } = await supabase.from("calendar_notes").update(body.payload).eq("id", body.id).select().single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ data });
+  }
+
+  if (body.action === "deleteCalendarNote") {
+    const { error } = await supabase.from("calendar_notes").delete().eq("id", body.id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ data: { id: body.id } });
+  }
+
+  if (body.action === "createReminder") {
+    const { data, error } = await supabase.from("notifications").insert({
+      ...body.payload,
+      is_read: false
+    }).select().single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    if (body.payload.customer_id) {
+      await supabase.from("timeline").insert({
+        customer_id: body.payload.customer_id,
+        order_id: body.payload.order_id || null,
+        event_type: "note",
+        title: "Добавено напомняне",
+        description: `${body.payload.title} - ${body.payload.description || ""}`
       });
     }
 

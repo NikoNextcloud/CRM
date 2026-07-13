@@ -17,11 +17,13 @@ import {
   PanelLeft,
   Phone,
   Plus,
+  Moon,
   RefreshCw,
   Save,
   Search,
   Settings,
   Sparkles,
+  Sun,
   Trash2,
   TrendingUp,
   Users
@@ -90,6 +92,17 @@ type NoteRow = {
   created_at: string;
 };
 
+type NotificationRow = {
+  id: string;
+  customer_id: string | null;
+  order_id: string | null;
+  title: string;
+  description: string | null;
+  due_at: string | null;
+  is_read: boolean;
+  created_at: string;
+};
+
 type CalendarNoteRow = {
   id: string;
   customer_id: string | null;
@@ -107,6 +120,7 @@ type CrmPayload = {
   orders: OrderRow[];
   files: FileRow[];
   timeline: TimelineRow[];
+  notifications: NotificationRow[];
   notes: NoteRow[];
   calendar_notes: CalendarNoteRow[];
   error?: string;
@@ -129,7 +143,6 @@ const navItems = [
   "Orders",
   "Calendar",
   "Statistics",
-  "AI Assistant",
   "Files",
   "Settings"
 ] as const;
@@ -142,7 +155,6 @@ const navLabels = {
   Orders: "Поръчки",
   Calendar: "Календар",
   Statistics: "Статистика",
-  "AI Assistant": "AI Асистент",
   Files: "Файлове",
   Settings: "Настройки"
 };
@@ -153,7 +165,6 @@ const navIcons = {
   Orders: ClipboardList,
   Calendar: CalendarDays,
   Statistics: BarChart3,
-  "AI Assistant": Sparkles,
   Files: FolderOpen,
   Settings
 };
@@ -286,6 +297,7 @@ export function LiveCrmApp() {
     orders: [],
     files: [],
     timeline: [],
+    notifications: [],
     notes: [],
     calendar_notes: []
   });
@@ -294,18 +306,26 @@ export function LiveCrmApp() {
   const [message, setMessage] = useState("");
   const [search, setSearch] = useState("");
   const [activeView, setActiveView] = useState<AppView>("Dashboard");
+  const [theme, setTheme] = useState<"light" | "dark">("light");
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [customerForm, setCustomerForm] = useState(emptyCustomer);
   const [editingCustomer, setEditingCustomer] = useState(false);
   const [orderForm, setOrderForm] = useState(emptyOrder);
   const [note, setNote] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState("");
   const [calendarForm, setCalendarForm] = useState({
+    id: "",
     customer_id: "",
     order_id: "",
     title: "",
     body: "",
     start_date: "",
     end_date: ""
+  });
+  const [reminderForm, setReminderForm] = useState({
+    order_id: "",
+    due_at: "",
+    description: ""
   });
   const [aiText, setAiText] = useState("AI анализът ще се появи тук, след като свържеш Cloudflare AI и натиснеш Анализирай.");
   const [aiLoading, setAiLoading] = useState(false);
@@ -363,6 +383,35 @@ export function LiveCrmApp() {
   useEffect(() => {
     loadCrm();
   }, []);
+
+  useEffect(() => {
+    const storedTheme = window.localStorage.getItem("printpilot:theme");
+    if (storedTheme === "dark" || storedTheme === "light") setTheme(storedTheme);
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("printpilot:theme", theme);
+  }, [theme]);
+
+  useEffect(() => {
+    if (!("Notification" in window)) return;
+    const timers = crm.notifications
+      .filter((item) => !item.is_read && item.due_at)
+      .map((item) => {
+        const delay = new Date(item.due_at as string).getTime() - Date.now();
+        if (delay <= 0 || delay > 2147483647) return null;
+        return window.setTimeout(() => {
+          if (Notification.permission === "granted") {
+            new Notification(item.title, { body: item.description || "Имате напомняне за поръчка." });
+          } else {
+            setMessage(`${item.title}: ${item.description || "Имате напомняне за поръчка."}`);
+          }
+        }, delay);
+      })
+      .filter((timer): timer is number => timer !== null);
+
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [crm.notifications]);
 
   useEffect(() => {
     if (!selectedCustomerId && crm.customers[0]) setSelectedCustomerId(crm.customers[0].id);
@@ -488,14 +537,25 @@ export function LiveCrmApp() {
   async function saveNote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedCustomer || !note.trim()) return;
-    const ok = await crmAction(
-      {
-        action: "createNote",
-        payload: { customer_id: selectedCustomer.id, body: note.trim() }
-      },
-      "Бележката е добавена."
-    );
-    if (ok) setNote("");
+    const ok = editingNoteId
+      ? await crmAction({ action: "updateNote", id: editingNoteId, payload: { body: note.trim() } }, "Бележката е обновена.")
+      : await crmAction(
+          {
+            action: "createNote",
+            payload: { customer_id: selectedCustomer.id, body: note.trim() }
+          },
+          "Бележката е добавена."
+        );
+    if (ok) {
+      setNote("");
+      setEditingNoteId("");
+    }
+  }
+
+  async function deleteNote(noteId: string) {
+    const confirmed = window.confirm("Сигурен ли си, че искаш да изтриеш тази бележка?");
+    if (!confirmed) return;
+    await crmAction({ action: "deleteNote", id: noteId }, "Бележката е изтрита.");
   }
 
   async function saveCalendarNote(event: FormEvent<HTMLFormElement>) {
@@ -504,22 +564,20 @@ export function LiveCrmApp() {
       setMessage("Избери начален и краен ден за срока.");
       return;
     }
-    const ok = await crmAction(
-      {
-        action: "createCalendarNote",
-        payload: {
-          customer_id: calendarForm.customer_id || null,
-          order_id: calendarForm.order_id || null,
-          title: calendarForm.title.trim() || "Срок за изработка",
-          body: calendarForm.body.trim(),
-          start_date: calendarForm.start_date,
-          end_date: calendarForm.end_date
-        }
-      },
-      "Календарната бележка е записана."
-    );
+    const payload = {
+      customer_id: calendarForm.customer_id || null,
+      order_id: calendarForm.order_id || null,
+      title: calendarForm.title.trim() || "Срок за изработка",
+      body: calendarForm.body.trim(),
+      start_date: calendarForm.start_date,
+      end_date: calendarForm.end_date
+    };
+    const ok = calendarForm.id
+      ? await crmAction({ action: "updateCalendarNote", id: calendarForm.id, payload }, "Календарната бележка е обновена.")
+      : await crmAction({ action: "createCalendarNote", payload }, "Календарната бележка е записана.");
     if (ok) {
       setCalendarForm({
+        id: "",
         customer_id: calendarForm.customer_id,
         order_id: "",
         title: "",
@@ -528,6 +586,38 @@ export function LiveCrmApp() {
         end_date: ""
       });
     }
+  }
+
+  async function deleteCalendarNote(id: string) {
+    const confirmed = window.confirm("Сигурен ли си, че искаш да изтриеш тази календарна бележка?");
+    if (!confirmed) return;
+    await crmAction({ action: "deleteCalendarNote", id }, "Календарната бележка е изтрита.");
+  }
+
+  async function saveReminder(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!reminderForm.order_id || !reminderForm.due_at) {
+      setMessage("Избери поръчка, дата и час за напомнянето.");
+      return;
+    }
+    const order = crm.orders.find((item) => item.id === reminderForm.order_id);
+    if ("Notification" in window && Notification.permission === "default") {
+      await Notification.requestPermission();
+    }
+    const ok = await crmAction(
+      {
+        action: "createReminder",
+        payload: {
+          customer_id: order?.customer_id || null,
+          order_id: reminderForm.order_id,
+          title: `Напомняне за ${order?.order_number || "поръчка"}`,
+          description: reminderForm.description.trim() || "Провери поръчката.",
+          due_at: new Date(reminderForm.due_at).toISOString()
+        }
+      },
+      "Напомнянето е записано."
+    );
+    if (ok) setReminderForm({ order_id: "", due_at: "", description: "" });
   }
 
   async function uploadFile(event: FormEvent<HTMLFormElement>) {
@@ -651,13 +741,12 @@ export function LiveCrmApp() {
   const showCustomerList = activeView === "Dashboard" || activeView === "Clients";
   const showOrderList = activeView === "Dashboard" || activeView === "Orders";
   const showKanban = activeView === "Dashboard" || activeView === "Orders";
-  const showCustomerProfile =
-    activeView === "Dashboard" || activeView === "Clients" || activeView === "AI Assistant" || activeView === "Files";
+  const showCustomerProfile = activeView === "Dashboard" || activeView === "Clients" || activeView === "Files";
   const showFileUpload = activeView === "Dashboard" || activeView === "Files" || activeView === "Clients";
   const showDeadlines = activeView === "Dashboard";
 
   return (
-    <main className="min-h-screen">
+    <main className={`${theme === "dark" ? "dark" : ""} min-h-screen pb-24 lg:pb-0`}>
       <div className="flex min-h-screen">
         <aside className="glass-panel sticky top-0 hidden h-screen w-72 shrink-0 flex-col justify-between p-5 lg:flex">
           <div>
@@ -666,7 +755,6 @@ export function LiveCrmApp() {
                 <PanelLeft size={21} />
               </div>
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-muted">PrintPilot</p>
                 <h1 className="text-xl font-bold text-ink">AI CRM на живо</h1>
               </div>
             </div>
@@ -716,6 +804,15 @@ export function LiveCrmApp() {
                     placeholder="Търси клиенти, поръчки, файлове..."
                   />
                 </label>
+                <button
+                  type="button"
+                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink hover:bg-soft"
+                  title={theme === "dark" ? "Включи бяла тема" : "Включи черна тема"}
+                >
+                  {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+                  {theme === "dark" ? "Бяла" : "Черна"}
+                </button>
                 <button
                   onClick={loadCrm}
                   className="inline-flex items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink hover:bg-soft"
@@ -853,6 +950,51 @@ export function LiveCrmApp() {
                     </button>
                   </form>
                 </FormCard>}
+
+                {showOrderForm && reminderForm.order_id && (
+                  <FormCard title="Напомняне за поръчка" icon={<Bell size={19} />}>
+                    <form onSubmit={saveReminder} className="grid gap-3 md:grid-cols-2">
+                      <label className="md:col-span-2">
+                        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Поръчка</span>
+                        <select
+                          value={reminderForm.order_id}
+                          onChange={(event) => setReminderForm({ ...reminderForm, order_id: event.target.value })}
+                          className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
+                        >
+                          {crm.orders.map((order) => (
+                            <option key={order.id} value={order.id}>
+                              {order.order_number} - {order.product || order.description || "Обща поръчка"}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <Input
+                        label="Дата и час"
+                        type="datetime-local"
+                        value={reminderForm.due_at}
+                        onChange={(value) => setReminderForm({ ...reminderForm, due_at: value })}
+                      />
+                      <Input
+                        label="Бележка"
+                        value={reminderForm.description}
+                        onChange={(value) => setReminderForm({ ...reminderForm, description: value })}
+                      />
+                      <div className="flex gap-2 md:col-span-2">
+                        <button className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-white" disabled={saving}>
+                          {saving ? <Loader2 size={16} className="animate-spin" /> : <Bell size={16} />}
+                          Запази напомняне
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setReminderForm({ order_id: "", due_at: "", description: "" })}
+                          className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-ink"
+                        >
+                          Отказ
+                        </button>
+                      </div>
+                    </form>
+                  </FormCard>
+                )}
               </section>}
 
               {(showCustomerList || showOrderList) && <section className="mt-5 grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
@@ -892,8 +1034,8 @@ export function LiveCrmApp() {
                     <h3 className="text-lg font-bold text-ink">Поръчки на живо</h3>
                     <span className="text-sm text-muted">Активни: {activeOrders.length}</span>
                   </div>
-                  <div className="overflow-hidden rounded-xl border border-line">
-                    <table className="w-full border-collapse text-left text-sm">
+                  <div className="overflow-x-auto rounded-xl border border-line">
+                    <table className="w-full min-w-[760px] border-collapse text-left text-sm">
                       <thead className="bg-soft text-xs uppercase tracking-[0.12em] text-muted">
                         <tr>
                           <th className="px-4 py-3">Поръчка</th>
@@ -924,6 +1066,17 @@ export function LiveCrmApp() {
                             </td>
                             <td className="px-4 py-3 text-right font-semibold text-ink">{currency(money(order.price))}</td>
                             <td className="px-4 py-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setReminderForm({ order_id: order.id, due_at: "", description: "" });
+                                  setActiveView("Orders");
+                                }}
+                                className="mr-2 inline-flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-700 transition hover:bg-amber-100"
+                                title="Добави напомняне"
+                              >
+                                <Bell size={16} />
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => deleteOrder(order.id)}
@@ -1095,9 +1248,67 @@ export function LiveCrmApp() {
                       </div>
                       <button className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-ink px-4 py-2.5 text-sm font-semibold text-white" disabled={saving}>
                         {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                        Запази в календара
+                        {calendarForm.id ? "Обнови в календара" : "Запази в календара"}
                       </button>
+                      {calendarForm.id && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCalendarForm({
+                              id: "",
+                              customer_id: calendarForm.customer_id,
+                              order_id: "",
+                              title: "",
+                              body: "",
+                              start_date: "",
+                              end_date: ""
+                            })
+                          }
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink"
+                        >
+                          Отказ от редакция
+                        </button>
+                      )}
                     </form>
+                    <div className="mt-5 space-y-2">
+                      {crm.calendar_notes.map((item) => (
+                        <div key={item.id} className="rounded-xl border border-line bg-soft p-3 text-sm">
+                          <p className="font-semibold text-ink">{item.title}</p>
+                          <p className="text-muted">
+                            {shortDate(item.start_date)} - {shortDate(item.end_date)}
+                            {item.customer_id ? ` · ${customerName(crm.customers, item.customer_id)}` : ""}
+                          </p>
+                          {item.body && <p className="mt-1 leading-6 text-slate-700">{item.body}</p>}
+                          <div className="mt-3 flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setCalendarForm({
+                                  id: item.id,
+                                  customer_id: item.customer_id || "",
+                                  order_id: item.order_id || "",
+                                  title: item.title,
+                                  body: item.body || "",
+                                  start_date: item.start_date,
+                                  end_date: item.end_date
+                                })
+                              }
+                              className="rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:bg-soft"
+                            >
+                              Редактирай
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteCalendarNote(item.id)}
+                              className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                            >
+                              Изтрий
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {!crm.calendar_notes.length && <p className="text-sm text-muted">Все още няма записани календарни бележки.</p>}
+                    </div>
                   </article>
                 </section>
               )}
@@ -1173,20 +1384,53 @@ export function LiveCrmApp() {
 
                         <div className="rounded-xl border border-line p-4">
                           <h4 className="mb-3 font-bold text-ink">Бележки</h4>
-                          <form onSubmit={saveNote} className="mb-4 flex gap-2">
+                          <form onSubmit={saveNote} className="mb-4 flex flex-col gap-2 sm:flex-row">
                             <input
                               value={note}
                               onChange={(event) => setNote(event.target.value)}
                               className="min-w-0 flex-1 rounded-xl border border-line px-3 py-2 text-sm outline-none focus:border-accent"
                               placeholder="Добави бележка за клиента..."
                             />
-                            <button className="rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-white">Добави</button>
+                            <button className="rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-white">
+                              {editingNoteId ? "Запази" : "Добави"}
+                            </button>
+                            {editingNoteId && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingNoteId("");
+                                  setNote("");
+                                }}
+                                className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-ink"
+                              >
+                                Отказ
+                              </button>
+                            )}
                           </form>
                           <div className="max-h-52 space-y-2 overflow-auto">
                             {selectedNotes.map((item) => (
-                              <p key={item.id} className="rounded-xl bg-soft p-3 text-sm text-slate-700">
-                                {item.body}
-                              </p>
+                              <div key={item.id} className="rounded-xl bg-soft p-3 text-sm text-slate-700">
+                                <p className="leading-6">{item.body}</p>
+                                <div className="mt-3 flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingNoteId(item.id);
+                                      setNote(item.body);
+                                    }}
+                                    className="rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:bg-soft"
+                                  >
+                                    Редактирай
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteNote(item.id)}
+                                    className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                                  >
+                                    Изтрий
+                                  </button>
+                                </div>
+                              </div>
                             ))}
                             {!selectedNotes.length && <p className="text-sm text-muted">Все още няма бележки.</p>}
                           </div>
@@ -1276,6 +1520,54 @@ export function LiveCrmApp() {
                       <p>За запис на клиенти, поръчки и файлове трябва да са добавени Supabase променливите на средата.</p>
                       <p>За AI анализ трябва да са добавени Cloudflare AI ключовете.</p>
                     </div>
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-ink px-4 py-2.5 text-sm font-semibold text-white"
+                      >
+                        {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+                        {theme === "dark" ? "Бяла тема" : "Черна тема"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!("Notification" in window)) {
+                            setMessage("Този браузър не поддържа известия.");
+                            return;
+                          }
+                          const permission = await Notification.requestPermission();
+                          setMessage(permission === "granted" ? "Известията са включени." : "Известията не са разрешени.");
+                        }}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink hover:bg-soft"
+                      >
+                        <Bell size={16} />
+                        Разреши известия
+                      </button>
+                      <button
+                        type="button"
+                        onClick={loadCrm}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink hover:bg-soft"
+                      >
+                        <RefreshCw size={16} />
+                        Синхронизирай
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearch("");
+                          setCustomerForm(emptyCustomer);
+                          setOrderForm(emptyOrder);
+                          setNote("");
+                          setEditingNoteId("");
+                          setReminderForm({ order_id: "", due_at: "", description: "" });
+                        }}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink hover:bg-soft"
+                      >
+                        <RefreshCw size={16} />
+                        Изчисти формите
+                      </button>
+                    </div>
                   </article>
                   <article className="premium-card rounded-2xl p-5">
                     <h3 className="mb-4 text-lg font-bold text-ink">Нужни променливи</h3>
@@ -1293,6 +1585,25 @@ export function LiveCrmApp() {
           )}
         </section>
       </div>
+      <nav className="fixed inset-x-3 bottom-3 z-50 grid grid-cols-7 gap-1 rounded-2xl border border-line bg-white/95 p-2 shadow-premium backdrop-blur lg:hidden">
+        {navItems.map((item) => {
+          const Icon = navIcons[item];
+          return (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setActiveView(item)}
+              className={`grid min-h-12 place-items-center rounded-xl text-xs font-semibold transition ${
+                item === activeView ? "bg-ink text-white" : "text-slate-600 hover:bg-soft hover:text-ink"
+              }`}
+              title={navLabels[item]}
+            >
+              <Icon size={18} />
+              <span className="sr-only">{navLabels[item]}</span>
+            </button>
+          );
+        })}
+      </nav>
     </main>
   );
 }
