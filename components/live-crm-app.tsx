@@ -119,6 +119,8 @@ const navItems = [
   "Settings"
 ] as const;
 
+type AppView = (typeof navItems)[number];
+
 const navLabels = {
   Dashboard: "Табло",
   Clients: "Клиенти",
@@ -228,6 +230,7 @@ export function LiveCrmApp() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [search, setSearch] = useState("");
+  const [activeView, setActiveView] = useState<AppView>("Dashboard");
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [customerForm, setCustomerForm] = useState(emptyCustomer);
   const [editingCustomer, setEditingCustomer] = useState(false);
@@ -367,17 +370,19 @@ export function LiveCrmApp() {
 
   async function saveOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!orderForm.customer_id || !orderForm.product.trim()) {
-      setMessage("Избери клиент и въведи продукт.");
+    if (!orderForm.customer_id) {
+      setMessage("Избери клиент за поръчката.");
       return;
     }
+
+    const productName = orderForm.product.trim() || "Обща поръчка";
 
     const ok = await crmAction(
       {
         action: "createOrder",
         payload: {
           ...orderForm,
-          product: orderForm.product.trim(),
+          product: productName,
           description: orderForm.description.trim(),
           quantity: Number(orderForm.quantity) || 1,
           price: Number(orderForm.price) || 0,
@@ -388,7 +393,10 @@ export function LiveCrmApp() {
       "Поръчката е добавена."
     );
 
-    if (ok) setOrderForm({ ...emptyOrder, customer_id: orderForm.customer_id });
+    if (ok) {
+      setOrderForm({ ...emptyOrder, customer_id: orderForm.customer_id });
+      setActiveView("Orders");
+    }
   }
 
   async function moveOrder(orderId: string, status: OrderStatus) {
@@ -517,6 +525,16 @@ export function LiveCrmApp() {
   const selectedFiles = crm.files.filter((file) => file.customer_id === selectedCustomer?.id);
   const selectedTimeline = crm.timeline.filter((event) => event.customer_id === selectedCustomer?.id);
   const selectedNotes = crm.notes.filter((item) => item.customer_id === selectedCustomer?.id);
+  const showStats = activeView === "Dashboard" || activeView === "Statistics";
+  const showCustomerForm = activeView === "Dashboard" || activeView === "Clients";
+  const showOrderForm = activeView === "Dashboard" || activeView === "Orders";
+  const showCustomerList = activeView === "Dashboard" || activeView === "Clients";
+  const showOrderList = activeView === "Dashboard" || activeView === "Orders";
+  const showKanban = activeView === "Dashboard" || activeView === "Orders";
+  const showCustomerProfile =
+    activeView === "Dashboard" || activeView === "Clients" || activeView === "AI Assistant" || activeView === "Files";
+  const showFileUpload = activeView === "Dashboard" || activeView === "Files" || activeView === "Clients";
+  const showDeadlines = activeView === "Dashboard" || activeView === "Calendar";
 
   return (
     <main className="min-h-screen">
@@ -538,8 +556,9 @@ export function LiveCrmApp() {
                 return (
                   <button
                     key={item}
+                    onClick={() => setActiveView(item)}
                     className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                      item === "Dashboard" ? "bg-ink text-white shadow-subtle" : "text-slate-600 hover:bg-white hover:text-ink"
+                      item === activeView ? "bg-ink text-white shadow-subtle" : "text-slate-600 hover:bg-white hover:text-ink"
                     }`}
                   >
                     <Icon size={18} />
@@ -609,7 +628,7 @@ export function LiveCrmApp() {
             </div>
           ) : (
             <>
-              <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              {showStats && <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                 {statCards.map((stat) => {
                   const Icon = stat.icon;
                   return (
@@ -622,10 +641,10 @@ export function LiveCrmApp() {
                     </article>
                   );
                 })}
-              </section>
+              </section>}
 
-              <section className="mt-5 grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
-                <FormCard title={editingCustomer ? "Редакция на клиент" : "Добави клиент"} icon={<Users size={19} />}>
+              {(showCustomerForm || showOrderForm) && <section className="mt-5 grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+                {showCustomerForm && <FormCard title={editingCustomer ? "Редакция на клиент" : "Добави клиент"} icon={<Users size={19} />}>
                   <form onSubmit={saveCustomer} className="grid gap-3 md:grid-cols-2">
                     <Input label="Име" value={customerForm.first_name} onChange={(value) => setCustomerForm({ ...customerForm, first_name: value })} />
                     <Input label="Фамилия" value={customerForm.last_name} onChange={(value) => setCustomerForm({ ...customerForm, last_name: value })} />
@@ -662,9 +681,9 @@ export function LiveCrmApp() {
                       )}
                     </div>
                   </form>
-                </FormCard>
+                </FormCard>}
 
-                <FormCard title="Добави поръчка" icon={<Plus size={19} />}>
+                {showOrderForm && <FormCard title="Добави поръчка" icon={<Plus size={19} />}>
                   <form onSubmit={saveOrder} className="grid gap-3 md:grid-cols-2">
                     <label className="md:col-span-2">
                       <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Клиент</span>
@@ -711,11 +730,11 @@ export function LiveCrmApp() {
                       Добави поръчка
                     </button>
                   </form>
-                </FormCard>
-              </section>
+                </FormCard>}
+              </section>}
 
-              <section className="mt-5 grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
-                <article className="premium-card rounded-2xl p-5">
+              {(showCustomerList || showOrderList) && <section className="mt-5 grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
+                {showCustomerList && <article className="premium-card rounded-2xl p-5">
                   <div className="mb-5 flex items-center justify-between">
                     <h3 className="text-lg font-bold text-ink">Клиенти на живо</h3>
                     <span className="text-sm text-muted">Показани: {filteredCustomers.length}</span>
@@ -744,9 +763,9 @@ export function LiveCrmApp() {
                       );
                     })}
                   </div>
-                </article>
+                </article>}
 
-                <article className="premium-card rounded-2xl p-5">
+                {showOrderList && <article className="premium-card rounded-2xl p-5">
                   <div className="mb-5 flex items-center justify-between">
                     <h3 className="text-lg font-bold text-ink">Поръчки на живо</h3>
                     <span className="text-sm text-muted">Активни: {activeOrders.length}</span>
@@ -766,7 +785,7 @@ export function LiveCrmApp() {
                           <tr key={order.id} className="hover:bg-soft">
                             <td className="px-4 py-3">
                               <p className="font-semibold text-ink">{order.order_number}</p>
-                              <p className="text-muted">{order.product || "Производствена работа"}</p>
+                              <p className="text-muted">{order.product || order.description || "Обща поръчка"}</p>
                             </td>
                             <td className="px-4 py-3 text-slate-700">{customerName(crm.customers, order.customer_id)}</td>
                             <td className="px-4 py-3">
@@ -786,10 +805,10 @@ export function LiveCrmApp() {
                       </tbody>
                     </table>
                   </div>
-                </article>
-              </section>
+                </article>}
+              </section>}
 
-              <section className="mt-5 premium-card rounded-2xl p-5">
+              {showKanban && <section className="mt-5 premium-card rounded-2xl p-5">
                 <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div>
                     <h3 className="text-lg font-bold text-ink">Kanban на живо</h3>
@@ -827,7 +846,7 @@ export function LiveCrmApp() {
                               onDragStart={(event) => event.dataTransfer.setData("text/plain", order.id)}
                               className="w-full cursor-grab rounded-lg bg-white p-3 text-left shadow-subtle active:cursor-grabbing"
                             >
-                              <p className="text-sm font-semibold text-ink">{order.product || order.order_number}</p>
+                              <p className="text-sm font-semibold text-ink">{order.product || order.description || order.order_number}</p>
                               <p className="mt-1 text-xs text-muted">{shortDate(order.deadline_at)}</p>
                             </button>
                           ))}
@@ -836,10 +855,10 @@ export function LiveCrmApp() {
                     );
                   })}
                 </div>
-              </section>
+              </section>}
 
-              <section className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-                <article className="premium-card rounded-2xl p-5">
+              {(showCustomerProfile || showFileUpload || showDeadlines) && <section className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+                {showCustomerProfile && <article className="premium-card rounded-2xl p-5">
                   <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
                       <p className="text-sm font-semibold uppercase tracking-[0.18em] text-accent">360° профил на клиента</p>
@@ -916,10 +935,10 @@ export function LiveCrmApp() {
                   ) : (
                     <p className="rounded-xl bg-soft p-4 text-sm text-muted">Добави първия клиент, за да се активира 360° профилът.</p>
                   )}
-                </article>
+                </article>}
 
-                <aside className="space-y-5">
-                  <article className="premium-card rounded-2xl p-5">
+                {(showFileUpload || showDeadlines) && <aside className="space-y-5">
+                  {showFileUpload && <article className="premium-card rounded-2xl p-5">
                     <div className="mb-4 flex items-center gap-2">
                       <CloudUpload size={19} className="text-coral" />
                       <h3 className="text-lg font-bold text-ink">Качване на файлове</h3>
@@ -960,9 +979,9 @@ export function LiveCrmApp() {
                         </div>
                       ))}
                     </div>
-                  </article>
+                  </article>}
 
-                  <article className="premium-card rounded-2xl p-5">
+                  {showDeadlines && <article className="premium-card rounded-2xl p-5">
                     <div className="mb-4 flex items-center gap-2">
                       <Phone size={19} className="text-teal" />
                       <h3 className="text-lg font-bold text-ink">Предстоящи срокове</h3>
@@ -975,14 +994,40 @@ export function LiveCrmApp() {
                         .slice(0, 5)
                         .map((order) => (
                           <div key={order.id} className="rounded-xl border border-line p-3">
-                            <p className="font-semibold text-ink">{order.product || order.order_number}</p>
+                            <p className="font-semibold text-ink">{order.product || order.description || order.order_number}</p>
                             <p className="text-sm text-muted">{shortDate(order.deadline_at)} · {customerName(crm.customers, order.customer_id)}</p>
                           </div>
                         ))}
                     </div>
+                  </article>}
+                </aside>}
+              </section>}
+
+              {activeView === "Settings" && (
+                <section className="mt-5 grid gap-5 xl:grid-cols-2">
+                  <article className="premium-card rounded-2xl p-5">
+                    <div className="mb-4 flex items-center gap-2">
+                      <Settings size={19} className="text-accent" />
+                      <h3 className="text-lg font-bold text-ink">Настройки на връзките</h3>
+                    </div>
+                    <div className="space-y-3 text-sm leading-6 text-slate-700">
+                      <p>Supabase статус: {crm.configured ? "свързан" : "не е свързан"}</p>
+                      <p>За запис на клиенти, поръчки и файлове трябва да са добавени Supabase променливите на средата.</p>
+                      <p>За AI анализ трябва да са добавени Cloudflare AI ключовете.</p>
+                    </div>
                   </article>
-                </aside>
-              </section>
+                  <article className="premium-card rounded-2xl p-5">
+                    <h3 className="mb-4 text-lg font-bold text-ink">Нужни променливи</h3>
+                    <div className="space-y-2 rounded-xl bg-soft p-4 text-sm font-semibold text-slate-700">
+                      <p>NEXT_PUBLIC_SUPABASE_URL</p>
+                      <p>NEXT_PUBLIC_SUPABASE_ANON_KEY</p>
+                      <p>SUPABASE_SERVICE_ROLE_KEY</p>
+                      <p>CLOUDFLARE_ACCOUNT_ID</p>
+                      <p>CLOUDFLARE_API_TOKEN</p>
+                    </div>
+                  </article>
+                </section>
+              )}
             </>
           )}
         </section>

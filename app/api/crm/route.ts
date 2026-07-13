@@ -150,15 +150,30 @@ export async function POST(request: Request) {
 
   if (body.action === "createOrder") {
     const orderNumber = `PP-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
-    const { data, error } = await supabase
+    const productName = body.payload.product || "Обща поръчка";
+    let orderInsert: Record<string, unknown> = {
+      ...body.payload,
+      product: productName,
+      order_number: orderNumber,
+      status: body.payload.status || "New"
+    };
+
+    let { data, error } = await supabase
       .from("orders")
-      .insert({
-        ...body.payload,
-        order_number: orderNumber,
-        status: body.payload.status || "New"
-      })
+      .insert(orderInsert)
       .select()
       .single();
+
+    if (error && error.message.toLowerCase().includes("product")) {
+      const { product, ...fallbackInsert } = orderInsert;
+      orderInsert = {
+        ...fallbackInsert,
+        description: `${productName}${body.payload.description ? ` - ${body.payload.description}` : ""}`
+      };
+      const retry = await supabase.from("orders").insert(orderInsert).select().single();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -167,7 +182,7 @@ export async function POST(request: Request) {
       order_id: data.id,
       event_type: "order",
       title: "Поръчката е създадена",
-      description: `${data.order_number} беше създадена за ${data.product || "нова производствена работа"}.`
+      description: `${data.order_number} беше създадена за ${data.product || productName}.`
     });
 
     return NextResponse.json({ data });
