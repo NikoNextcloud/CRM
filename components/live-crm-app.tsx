@@ -234,9 +234,25 @@ function money(value: number | string | undefined | null) {
   return typeof value === "string" ? Number(value) || 0 : value || 0;
 }
 
+function localDateFromValue(value: string | Date) {
+  if (value instanceof Date) return value;
+  const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateOnly && !value.includes("T")) {
+    return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
+  }
+  return new Date(value);
+}
+
+function formatLocalDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function shortDate(value?: string | null) {
   if (!value) return "Няма дата";
-  return new Intl.DateTimeFormat("bg-BG", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(value));
+  return new Intl.DateTimeFormat("bg-BG", { day: "2-digit", month: "short", year: "numeric" }).format(localDateFromValue(value));
 }
 
 function fileSize(bytes: number | null) {
@@ -260,9 +276,9 @@ function viberLink(value?: string | null) {
 }
 
 function dateKey(value: string | Date) {
-  const date = value instanceof Date ? value : new Date(value);
+  const date = localDateFromValue(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toISOString().slice(0, 10);
+  return formatLocalDateKey(date);
 }
 
 function buildCalendarDays(date = new Date()) {
@@ -512,7 +528,7 @@ export function LiveCrmApp() {
           quantity: Number(orderForm.quantity) || 1,
           price: Number(orderForm.price) || 0,
           cost: Number(orderForm.cost) || 0,
-          deadline_at: orderForm.deadline_at ? new Date(orderForm.deadline_at).toISOString() : null
+          deadline_at: orderForm.deadline_at || null
         }
       },
       "Поръчката е добавена."
@@ -564,13 +580,15 @@ export function LiveCrmApp() {
       setMessage("Избери начален и краен ден за срока.");
       return;
     }
+    const startDate = calendarForm.start_date <= calendarForm.end_date ? calendarForm.start_date : calendarForm.end_date;
+    const endDate = calendarForm.start_date <= calendarForm.end_date ? calendarForm.end_date : calendarForm.start_date;
     const payload = {
       customer_id: calendarForm.customer_id || null,
       order_id: calendarForm.order_id || null,
       title: calendarForm.title.trim() || "Срок за изработка",
       body: calendarForm.body.trim(),
-      start_date: calendarForm.start_date,
-      end_date: calendarForm.end_date
+      start_date: startDate,
+      end_date: endDate
     };
     const ok = calendarForm.id
       ? await crmAction({ action: "updateCalendarNote", id: calendarForm.id, payload }, "Календарната бележка е обновена.")
