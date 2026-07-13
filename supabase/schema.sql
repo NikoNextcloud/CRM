@@ -9,6 +9,8 @@ create table if not exists customers (
   email text,
   address text,
   city text,
+  viber text,
+  whatsapp text,
   vat_number text,
   notes text,
   created_at timestamptz not null default now(),
@@ -107,6 +109,17 @@ create table if not exists notifications (
   created_at timestamptz not null default now()
 );
 
+create table if not exists calendar_notes (
+  id uuid primary key default gen_random_uuid(),
+  customer_id uuid references customers(id) on delete set null,
+  order_id uuid references orders(id) on delete set null,
+  title text not null,
+  body text,
+  start_date date not null,
+  end_date date not null,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists tasks (
   id uuid primary key default gen_random_uuid(),
   customer_id uuid references customers(id) on delete cascade,
@@ -164,6 +177,10 @@ create index if not exists idx_timeline_customer_id on timeline(customer_id);
 create index if not exists idx_files_order_id on files(order_id);
 
 alter table orders add column if not exists product text;
+alter table customers add column if not exists viber text;
+alter table customers add column if not exists whatsapp text;
+create index if not exists idx_calendar_notes_start_date on calendar_notes(start_date);
+create index if not exists idx_calendar_notes_customer_id on calendar_notes(customer_id);
 
 insert into storage.buckets (id, name, public)
 values ('order-files', 'order-files', false)

@@ -10,15 +10,15 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        ink: "#172033",
+        ink: "#0F172A",
         muted: "#667085",
-        line: "#E7EAF0",
+        line: "#E4E7EC",
         panel: "#FFFFFF",
-        soft: "#F6F8FB",
-        accent: "#2563EB",
-        teal: "#10B981",
-        coral: "#F97316",
-        violet: "#7C3AED"
+        soft: "#F8FAFC",
+        accent: "#1D4ED8",
+        teal: "#0F766E",
+        coral: "#EA580C",
+        violet: "#6D28D9"
       },
       boxShadow: {
         premium: "0 18px 60px rgba(23, 32, 51, 0.09)",

@@ -12,6 +12,8 @@ type CrmAction =
         email?: string;
         address?: string;
         city?: string;
+        viber?: string;
+        whatsapp?: string;
         vat_number?: string;
         notes?: string;
       };
@@ -40,11 +42,26 @@ type CrmAction =
       payload: Record<string, unknown>;
     }
   | {
+      action: "deleteOrder";
+      id: string;
+    }
+  | {
       action: "createNote";
       payload: {
         customer_id: string;
         order_id?: string;
         body: string;
+      };
+    }
+  | {
+      action: "createCalendarNote";
+      payload: {
+        customer_id?: string | null;
+        order_id?: string | null;
+        title: string;
+        body?: string;
+        start_date: string;
+        end_date: string;
       };
     };
 
@@ -72,22 +89,25 @@ export async function GET() {
         files: [],
         timeline: [],
         notifications: [],
-        notes: []
+        notes: [],
+        calendar_notes: []
       },
       { status: 200 }
     );
   }
 
-  const [customers, orders, files, timeline, notifications, notes] = await Promise.all([
+  const [customers, orders, files, timeline, notifications, notes, calendarNotes] = await Promise.all([
     supabase.from("customers").select("*").order("created_at", { ascending: false }),
     supabase.from("orders").select("*").order("created_at", { ascending: false }),
     supabase.from("files").select("*").order("created_at", { ascending: false }),
     supabase.from("timeline").select("*").order("event_at", { ascending: false }),
     supabase.from("notifications").select("*").order("created_at", { ascending: false }),
-    supabase.from("notes").select("*").order("created_at", { ascending: false })
+    supabase.from("notes").select("*").order("created_at", { ascending: false }),
+    supabase.from("calendar_notes").select("*").order("start_date", { ascending: true })
   ]);
 
-  const error = customers.error || orders.error || files.error || timeline.error || notifications.error || notes.error;
+  const calendarTableMissing = calendarNotes.error?.message.toLowerCase().includes("calendar_notes");
+  const error = customers.error || orders.error || files.error || timeline.error || notifications.error || notes.error || (calendarTableMissing ? null : calendarNotes.error);
   if (error) {
     return NextResponse.json({ configured: true, error: error.message }, { status: 500 });
   }
@@ -99,7 +119,8 @@ export async function GET() {
     files: files.data ?? [],
     timeline: timeline.data ?? [],
     notifications: notifications.data ?? [],
-    notes: notes.data ?? []
+    notes: notes.data ?? [],
+    calendar_notes: calendarTableMissing ? [] : calendarNotes.data ?? []
   });
 }
 
@@ -115,7 +136,7 @@ export async function POST(request: Request) {
   const body = (await request.json()) as CrmAction;
 
   if (body.action === "createCustomer") {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("customers")
       .insert({
         ...body.payload,
@@ -123,6 +144,20 @@ export async function POST(request: Request) {
       })
       .select()
       .single();
+
+    if (error && (error.message.toLowerCase().includes("viber") || error.message.toLowerCase().includes("whatsapp"))) {
+      const { viber, whatsapp, ...fallbackPayload } = body.payload;
+      const retry = await supabase
+        .from("customers")
+        .insert({
+          ...fallbackPayload,
+          last_contact_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -137,12 +172,24 @@ export async function POST(request: Request) {
   }
 
   if (body.action === "updateCustomer") {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("customers")
       .update({ ...body.payload, last_contact_at: new Date().toISOString() })
       .eq("id", body.id)
       .select()
       .single();
+
+    if (error && (error.message.toLowerCase().includes("viber") || error.message.toLowerCase().includes("whatsapp"))) {
+      const { viber, whatsapp, ...fallbackPayload } = body.payload;
+      const retry = await supabase
+        .from("customers")
+        .update({ ...fallbackPayload, last_contact_at: new Date().toISOString() })
+        .eq("id", body.id)
+        .select()
+        .single();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ data });
@@ -209,6 +256,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ data });
   }
 
+  if (body.action === "deleteOrder") {
+    const { error } = await supabase.from("orders").delete().eq("id", body.id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ data: { id: body.id } });
+  }
+
   if (body.action === "createNote") {
     const { data, error } = await supabase.from("notes").insert(body.payload).select().single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -220,6 +273,23 @@ export async function POST(request: Request) {
       title: "Добавена бележка",
       description: body.payload.body
     });
+
+    return NextResponse.json({ data });
+  }
+
+  if (body.action === "createCalendarNote") {
+    const { data, error } = await supabase.from("calendar_notes").insert(body.payload).select().single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    if (body.payload.customer_id) {
+      await supabase.from("timeline").insert({
+        customer_id: body.payload.customer_id,
+        order_id: body.payload.order_id || null,
+        event_type: "note",
+        title: "Добавена календарна бележка",
+        description: `${body.payload.title} (${body.payload.start_date} - ${body.payload.end_date})`
+      });
+    }
 
     return NextResponse.json({ data });
   }

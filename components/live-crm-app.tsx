@@ -22,6 +22,7 @@ import {
   Search,
   Settings,
   Sparkles,
+  Trash2,
   TrendingUp,
   Users
 } from "lucide-react";
@@ -36,6 +37,8 @@ type CustomerRow = {
   email: string | null;
   address: string | null;
   city: string | null;
+  viber: string | null;
+  whatsapp: string | null;
   vat_number: string | null;
   notes: string | null;
   created_at: string;
@@ -87,6 +90,17 @@ type NoteRow = {
   created_at: string;
 };
 
+type CalendarNoteRow = {
+  id: string;
+  customer_id: string | null;
+  order_id: string | null;
+  title: string;
+  body: string | null;
+  start_date: string;
+  end_date: string;
+  created_at: string;
+};
+
 type CrmPayload = {
   configured: boolean;
   customers: CustomerRow[];
@@ -94,6 +108,7 @@ type CrmPayload = {
   files: FileRow[];
   timeline: TimelineRow[];
   notes: NoteRow[];
+  calendar_notes: CalendarNoteRow[];
   error?: string;
 };
 
@@ -187,6 +202,8 @@ const emptyCustomer = {
   email: "",
   address: "",
   city: "",
+  viber: "",
+  whatsapp: "",
   vat_number: "",
   notes: ""
 };
@@ -217,6 +234,51 @@ function fileSize(bytes: number | null) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function cleanPhone(value?: string | null) {
+  return (value || "").replace(/[^\d+]/g, "");
+}
+
+function whatsappLink(value?: string | null) {
+  const phone = cleanPhone(value).replace(/^\+/, "");
+  return phone ? `https://wa.me/${phone}` : "";
+}
+
+function viberLink(value?: string | null) {
+  const phone = cleanPhone(value);
+  return phone ? `viber://chat?number=${encodeURIComponent(phone)}` : "";
+}
+
+function dateKey(value: string | Date) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
+function buildCalendarDays(date = new Date()) {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const startOffset = (firstDay.getDay() + 6) % 7;
+  const start = new Date(year, month, 1 - startOffset);
+  return Array.from({ length: 42 }, (_, index) => {
+    const day = new Date(start);
+    day.setDate(start.getDate() + index);
+    return {
+      date: day,
+      key: dateKey(day),
+      inMonth: day.getMonth() === month,
+      label: day.getDate()
+    };
+  });
+}
+
+function isDateInRange(day: string, start?: string | null, end?: string | null) {
+  if (!day || !start || !end) return false;
+  const from = start <= end ? start : end;
+  const to = start <= end ? end : start;
+  return day >= from && day <= to;
+}
+
 export function LiveCrmApp() {
   const [crm, setCrm] = useState<CrmPayload>({
     configured: false,
@@ -224,7 +286,8 @@ export function LiveCrmApp() {
     orders: [],
     files: [],
     timeline: [],
-    notes: []
+    notes: [],
+    calendar_notes: []
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -236,6 +299,14 @@ export function LiveCrmApp() {
   const [editingCustomer, setEditingCustomer] = useState(false);
   const [orderForm, setOrderForm] = useState(emptyOrder);
   const [note, setNote] = useState("");
+  const [calendarForm, setCalendarForm] = useState({
+    customer_id: "",
+    order_id: "",
+    title: "",
+    body: "",
+    start_date: "",
+    end_date: ""
+  });
   const [aiText, setAiText] = useState("AI анализът ще се появи тук, след като свържеш Cloudflare AI и натиснеш Анализирай.");
   const [aiLoading, setAiLoading] = useState(false);
 
@@ -295,10 +366,13 @@ export function LiveCrmApp() {
 
   useEffect(() => {
     if (!selectedCustomerId && crm.customers[0]) setSelectedCustomerId(crm.customers[0].id);
-    if (!orderForm.customer_id && crm.customers[0]) {
-      setOrderForm((current) => ({ ...current, customer_id: crm.customers[0].id }));
+  }, [crm.customers, selectedCustomerId]);
+
+  useEffect(() => {
+    if (!calendarForm.customer_id && crm.customers[0]) {
+      setCalendarForm((current) => ({ ...current, customer_id: crm.customers[0].id }));
     }
-  }, [crm.customers, selectedCustomerId, orderForm.customer_id]);
+  }, [crm.customers, calendarForm.customer_id]);
 
   async function loadCrm() {
     setLoading(true);
@@ -353,6 +427,8 @@ export function LiveCrmApp() {
       email: customerForm.email.trim(),
       address: customerForm.address.trim(),
       city: customerForm.city.trim(),
+      viber: customerForm.viber.trim(),
+      whatsapp: customerForm.whatsapp.trim(),
       vat_number: customerForm.vat_number.trim(),
       notes: customerForm.notes.trim()
     };
@@ -394,9 +470,15 @@ export function LiveCrmApp() {
     );
 
     if (ok) {
-      setOrderForm({ ...emptyOrder, customer_id: orderForm.customer_id });
+      setOrderForm(emptyOrder);
       setActiveView("Orders");
     }
+  }
+
+  async function deleteOrder(orderId: string) {
+    const confirmed = window.confirm("Сигурен ли си, че искаш да изтриеш тази поръчка?");
+    if (!confirmed) return;
+    await crmAction({ action: "deleteOrder", id: orderId }, "Поръчката е изтрита.");
   }
 
   async function moveOrder(orderId: string, status: OrderStatus) {
@@ -414,6 +496,38 @@ export function LiveCrmApp() {
       "Бележката е добавена."
     );
     if (ok) setNote("");
+  }
+
+  async function saveCalendarNote(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!calendarForm.start_date || !calendarForm.end_date) {
+      setMessage("Избери начален и краен ден за срока.");
+      return;
+    }
+    const ok = await crmAction(
+      {
+        action: "createCalendarNote",
+        payload: {
+          customer_id: calendarForm.customer_id || null,
+          order_id: calendarForm.order_id || null,
+          title: calendarForm.title.trim() || "Срок за изработка",
+          body: calendarForm.body.trim(),
+          start_date: calendarForm.start_date,
+          end_date: calendarForm.end_date
+        }
+      },
+      "Календарната бележка е записана."
+    );
+    if (ok) {
+      setCalendarForm({
+        customer_id: calendarForm.customer_id,
+        order_id: "",
+        title: "",
+        body: "",
+        start_date: "",
+        end_date: ""
+      });
+    }
   }
 
   async function uploadFile(event: FormEvent<HTMLFormElement>) {
@@ -497,6 +611,8 @@ export function LiveCrmApp() {
       email: selectedCustomer.email || "",
       address: selectedCustomer.address || "",
       city: selectedCustomer.city || "",
+      viber: selectedCustomer.viber || "",
+      whatsapp: selectedCustomer.whatsapp || "",
       vat_number: selectedCustomer.vat_number || "",
       notes: selectedCustomer.notes || ""
     });
@@ -525,6 +641,10 @@ export function LiveCrmApp() {
   const selectedFiles = crm.files.filter((file) => file.customer_id === selectedCustomer?.id);
   const selectedTimeline = crm.timeline.filter((event) => event.customer_id === selectedCustomer?.id);
   const selectedNotes = crm.notes.filter((item) => item.customer_id === selectedCustomer?.id);
+  const calendarDays = buildCalendarDays();
+  const calendarOrders = crm.orders.filter((order) => order.deadline_at);
+  const selectedCalendarCustomer = crm.customers.find((customer) => customer.id === calendarForm.customer_id);
+  const selectedCalendarOrder = crm.orders.find((order) => order.id === calendarForm.order_id);
   const showStats = activeView === "Dashboard" || activeView === "Statistics";
   const showCustomerForm = activeView === "Dashboard" || activeView === "Clients";
   const showOrderForm = activeView === "Dashboard" || activeView === "Orders";
@@ -534,7 +654,7 @@ export function LiveCrmApp() {
   const showCustomerProfile =
     activeView === "Dashboard" || activeView === "Clients" || activeView === "AI Assistant" || activeView === "Files";
   const showFileUpload = activeView === "Dashboard" || activeView === "Files" || activeView === "Clients";
-  const showDeadlines = activeView === "Dashboard" || activeView === "Calendar";
+  const showDeadlines = activeView === "Dashboard";
 
   return (
     <main className="min-h-screen">
@@ -651,6 +771,8 @@ export function LiveCrmApp() {
                     <Input label="Фирма" value={customerForm.company} onChange={(value) => setCustomerForm({ ...customerForm, company: value })} />
                     <Input label="Телефон" value={customerForm.phone} onChange={(value) => setCustomerForm({ ...customerForm, phone: value })} />
                     <Input label="Имейл" value={customerForm.email} onChange={(value) => setCustomerForm({ ...customerForm, email: value })} />
+                    <Input label="Viber номер" value={customerForm.viber} onChange={(value) => setCustomerForm({ ...customerForm, viber: value })} />
+                    <Input label="WhatsApp номер" value={customerForm.whatsapp} onChange={(value) => setCustomerForm({ ...customerForm, whatsapp: value })} />
                     <Input label="Град" value={customerForm.city} onChange={(value) => setCustomerForm({ ...customerForm, city: value })} />
                     <Input label="Адрес" value={customerForm.address} onChange={(value) => setCustomerForm({ ...customerForm, address: value })} />
                     <Input label="ДДС номер" value={customerForm.vat_number} onChange={(value) => setCustomerForm({ ...customerForm, vat_number: value })} />
@@ -778,6 +900,7 @@ export function LiveCrmApp() {
                           <th className="px-4 py-3">Клиент</th>
                           <th className="px-4 py-3">Статус</th>
                           <th className="px-4 py-3 text-right">Стойност</th>
+                          <th className="px-4 py-3 text-right">Действие</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-line bg-white">
@@ -800,6 +923,16 @@ export function LiveCrmApp() {
                               </select>
                             </td>
                             <td className="px-4 py-3 text-right font-semibold text-ink">{currency(money(order.price))}</td>
+                            <td className="px-4 py-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => deleteOrder(order.id)}
+                                className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 p-2 text-rose-700 transition hover:bg-rose-100"
+                                title="Изтрий поръчката"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -857,6 +990,118 @@ export function LiveCrmApp() {
                 </div>
               </section>}
 
+              {activeView === "Calendar" && (
+                <section className="mt-5 grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
+                  <article className="premium-card rounded-2xl p-5">
+                    <div className="mb-5 flex items-center justify-between">
+                      <div>
+                        <h3 className="text-lg font-bold text-ink">Календар на сроковете</h3>
+                        <p className="text-sm text-muted">Червените дни са срокове за изработка или избрани периоди.</p>
+                      </div>
+                      <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
+                        {new Intl.DateTimeFormat("bg-BG", { month: "long", year: "numeric" }).format(new Date())}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold uppercase tracking-[0.12em] text-muted">
+                      {["Пон", "Вто", "Сря", "Чет", "Пет", "Съб", "Нед"].map((day) => (
+                        <span key={day}>{day}</span>
+                      ))}
+                    </div>
+                    <div className="mt-3 grid grid-cols-7 gap-2">
+                      {calendarDays.map((day) => {
+                        const orderForDay = calendarOrders.find((order) => dateKey(order.deadline_at || "") === day.key);
+                        const savedNote = crm.calendar_notes.find((item) => isDateInRange(day.key, item.start_date, item.end_date));
+                        const selectedRange = isDateInRange(day.key, calendarForm.start_date, calendarForm.end_date);
+                        const isDeadline = Boolean(orderForDay || savedNote || selectedRange);
+                        return (
+                          <div
+                            key={day.key}
+                            className={`min-h-28 rounded-xl border p-2 text-left transition ${
+                              isDeadline
+                                ? "border-rose-200 bg-rose-50 text-rose-950"
+                                : day.inMonth
+                                  ? "border-line bg-white"
+                                  : "border-slate-100 bg-slate-50 text-slate-400"
+                            }`}
+                          >
+                            <div className="mb-2 flex items-center justify-between">
+                              <span className="text-sm font-bold">{day.label}</span>
+                              {isDeadline && <span className="h-2 w-2 rounded-full bg-rose-600" />}
+                            </div>
+                            {orderForDay && (
+                              <p className="line-clamp-2 text-xs font-semibold">
+                                {customerName(crm.customers, orderForDay.customer_id)} · {orderForDay.product || orderForDay.description || orderForDay.order_number}
+                              </p>
+                            )}
+                            {savedNote && (
+                              <p className="mt-1 line-clamp-2 text-xs">
+                                {savedNote.title}{savedNote.body ? ` · ${savedNote.body}` : ""}
+                              </p>
+                            )}
+                            {selectedRange && !savedNote && (
+                              <p className="mt-1 text-xs font-semibold">Нов избран срок</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </article>
+
+                  <article className="premium-card rounded-2xl p-5">
+                    <h3 className="mb-4 text-lg font-bold text-ink">Бележка в календара</h3>
+                    <form onSubmit={saveCalendarNote} className="space-y-3">
+                      <label>
+                        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Клиент</span>
+                        <select
+                          value={calendarForm.customer_id}
+                          onChange={(event) => setCalendarForm({ ...calendarForm, customer_id: event.target.value, order_id: "" })}
+                          className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
+                        >
+                          <option value="">Без клиент</option>
+                          {crm.customers.map((customer) => (
+                            <option key={customer.id} value={customer.id}>{displayCustomer(customer)}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Поръчка</span>
+                        <select
+                          value={calendarForm.order_id}
+                          onChange={(event) => setCalendarForm({ ...calendarForm, order_id: event.target.value })}
+                          className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
+                        >
+                          <option value="">Без поръчка</option>
+                          {crm.orders
+                            .filter((order) => !calendarForm.customer_id || order.customer_id === calendarForm.customer_id)
+                            .map((order) => (
+                              <option key={order.id} value={order.id}>{order.order_number} - {order.product || order.description || "Обща поръчка"}</option>
+                            ))}
+                        </select>
+                      </label>
+                      <Input label="Начален ден" type="date" value={calendarForm.start_date} onChange={(value) => setCalendarForm({ ...calendarForm, start_date: value })} />
+                      <Input label="Краен ден" type="date" value={calendarForm.end_date} onChange={(value) => setCalendarForm({ ...calendarForm, end_date: value })} />
+                      <Input label="Заглавие" value={calendarForm.title} onChange={(value) => setCalendarForm({ ...calendarForm, title: value })} />
+                      <label>
+                        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Бележка</span>
+                        <textarea
+                          value={calendarForm.body}
+                          onChange={(event) => setCalendarForm({ ...calendarForm, body: event.target.value })}
+                          className="mt-1 min-h-28 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
+                        />
+                      </label>
+                      <div className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">
+                        {selectedCalendarCustomer ? displayCustomer(selectedCalendarCustomer) : "Без избран клиент"}
+                        {selectedCalendarOrder ? ` · ${selectedCalendarOrder.order_number}` : ""}
+                      </div>
+                      <button className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-ink px-4 py-2.5 text-sm font-semibold text-white" disabled={saving}>
+                        {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                        Запази в календара
+                      </button>
+                    </form>
+                  </article>
+                </section>
+              )}
+
               {(showCustomerProfile || showFileUpload || showDeadlines) && <section className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
                 {showCustomerProfile && <article className="premium-card rounded-2xl p-5">
                   <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -876,6 +1121,22 @@ export function LiveCrmApp() {
                           <p className="font-bold text-ink">{selectedCustomer.first_name} {selectedCustomer.last_name}</p>
                           <p>{selectedCustomer.phone || "Няма телефон"}</p>
                           <p>{selectedCustomer.email || "Няма имейл"}</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <a
+                              href={viberLink(selectedCustomer.viber || selectedCustomer.phone)}
+                              className={`rounded-xl px-3 py-2 text-sm font-semibold ${viberLink(selectedCustomer.viber || selectedCustomer.phone) ? "bg-violet text-white" : "pointer-events-none bg-slate-100 text-slate-400"}`}
+                            >
+                              Отвори Viber
+                            </a>
+                            <a
+                              href={whatsappLink(selectedCustomer.whatsapp || selectedCustomer.phone)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={`rounded-xl px-3 py-2 text-sm font-semibold ${whatsappLink(selectedCustomer.whatsapp || selectedCustomer.phone) ? "bg-teal text-white" : "pointer-events-none bg-slate-100 text-slate-400"}`}
+                            >
+                              Отвори WhatsApp
+                            </a>
+                          </div>
                           <p>{[selectedCustomer.address, selectedCustomer.city].filter(Boolean).join(", ") || "Няма адрес"}</p>
                           <p>ДДС: {selectedCustomer.vat_number || "Няма ДДС номер"}</p>
                         </InfoPanel>
