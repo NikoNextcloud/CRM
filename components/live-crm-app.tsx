@@ -193,6 +193,30 @@ const statusColors: Record<OrderStatus, string> = {
   Cancelled: "bg-rose-50 text-rose-700"
 };
 
+const statusColumnColors: Record<OrderStatus, string> = {
+  New: "border-slate-300 bg-slate-50 shadow-[0_0_24px_rgba(100,116,139,0.16)]",
+  "Quote Sent": "border-blue-300 bg-blue-50 shadow-[0_0_24px_rgba(37,99,235,0.18)]",
+  Approved: "border-emerald-300 bg-emerald-50 shadow-[0_0_24px_rgba(5,150,105,0.18)]",
+  "In Production": "border-amber-300 bg-amber-50 shadow-[0_0_24px_rgba(217,119,6,0.2)]",
+  Printing: "border-violet-300 bg-violet-50 shadow-[0_0_24px_rgba(124,58,237,0.18)]",
+  Ready: "border-teal-300 bg-teal-50 shadow-[0_0_24px_rgba(13,148,136,0.18)]",
+  Shipped: "border-cyan-300 bg-cyan-50 shadow-[0_0_24px_rgba(8,145,178,0.18)]",
+  Completed: "border-green-300 bg-green-50 shadow-[0_0_24px_rgba(22,163,74,0.18)]",
+  Cancelled: "border-rose-300 bg-rose-50 shadow-[0_0_24px_rgba(225,29,72,0.18)]"
+};
+
+const statusCardColors: Record<OrderStatus, string> = {
+  New: "border-l-slate-500",
+  "Quote Sent": "border-l-blue-500",
+  Approved: "border-l-emerald-500",
+  "In Production": "border-l-amber-500",
+  Printing: "border-l-violet-500",
+  Ready: "border-l-teal-500",
+  Shipped: "border-l-cyan-500",
+  Completed: "border-l-green-500",
+  Cancelled: "border-l-rose-500"
+};
+
 const statusLabels: Record<OrderStatus, string> = {
   New: "Нова",
   "Quote Sent": "Оферта изпратена",
@@ -755,7 +779,7 @@ export function LiveCrmApp() {
   const selectedCalendarOrder = crm.orders.find((order) => order.id === calendarForm.order_id);
   const showStats = activeView === "Dashboard" || activeView === "Statistics";
   const showCustomerForm = activeView === "Dashboard" || activeView === "Clients";
-  const showOrderForm = activeView === "Dashboard" || activeView === "Orders";
+  const showOrderForm = activeView === "Dashboard";
   const showCustomerList = activeView === "Dashboard" || activeView === "Clients";
   const showOrderList = activeView === "Dashboard" || activeView === "Orders";
   const showKanban = activeView === "Dashboard" || activeView === "Orders";
@@ -1134,11 +1158,11 @@ export function LiveCrmApp() {
                           const id = event.dataTransfer.getData("text/plain");
                           if (id) moveOrder(id, status);
                         }}
-                        className="min-h-40 rounded-xl border border-line bg-soft p-3"
+                        className={`min-h-40 rounded-xl border p-3 ${statusColumnColors[status]}`}
                       >
                         <div className="mb-3 flex items-center justify-between">
                           <p className="text-sm font-bold text-ink">{statusLabels[status]}</p>
-                          <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-muted">
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusColors[status]}`}>
                             {columnOrders.length}
                           </span>
                         </div>
@@ -1148,7 +1172,7 @@ export function LiveCrmApp() {
                               key={order.id}
                               draggable
                               onDragStart={(event) => event.dataTransfer.setData("text/plain", order.id)}
-                              className="w-full cursor-grab rounded-lg bg-white p-3 text-left shadow-subtle active:cursor-grabbing"
+                              className={`w-full cursor-grab rounded-lg border-l-4 bg-white p-3 text-left shadow-subtle active:cursor-grabbing ${statusCardColors[order.status]}`}
                             >
                               <p className="text-sm font-semibold text-ink">{order.product || order.description || order.order_number}</p>
                               <p className="mt-1 text-xs text-muted">{shortDate(order.deadline_at)}</p>
@@ -1160,6 +1184,104 @@ export function LiveCrmApp() {
                   })}
                 </div>
               </section>}
+
+              {activeView === "Orders" && (
+                <section className="mt-5 grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+                  <FormCard title="Добави поръчка" icon={<Plus size={19} />}>
+                    <form onSubmit={saveOrder} className="grid gap-3 md:grid-cols-2">
+                      <label className="md:col-span-2">
+                        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Клиент</span>
+                        <select
+                          value={orderForm.customer_id}
+                          onChange={(event) => setOrderForm({ ...orderForm, customer_id: event.target.value })}
+                          className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
+                        >
+                          <option value="">Избери клиент</option>
+                          {crm.customers.map((customer) => (
+                            <option key={customer.id} value={customer.id}>
+                              {displayCustomer(customer)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <Input label="Продукт" value={orderForm.product} onChange={(value) => setOrderForm({ ...orderForm, product: value })} />
+                      <label>
+                        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Статус</span>
+                        <select
+                          value={orderForm.status}
+                          onChange={(event) => setOrderForm({ ...orderForm, status: event.target.value as OrderStatus })}
+                          className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
+                        >
+                          {statuses.map((status) => (
+                            <option key={status} value={status}>{statusLabels[status]}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <Input label="Количество" type="number" value={String(orderForm.quantity)} onChange={(value) => setOrderForm({ ...orderForm, quantity: Number(value) })} />
+                      <Input label="Цена" type="number" value={String(orderForm.price)} onChange={(value) => setOrderForm({ ...orderForm, price: Number(value) })} />
+                      <Input label="Разход" type="number" value={String(orderForm.cost)} onChange={(value) => setOrderForm({ ...orderForm, cost: Number(value) })} />
+                      <Input label="Краен срок" type="date" value={orderForm.deadline_at} onChange={(value) => setOrderForm({ ...orderForm, deadline_at: value })} />
+                      <label className="md:col-span-2">
+                        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Описание</span>
+                        <textarea
+                          value={orderForm.description}
+                          onChange={(event) => setOrderForm({ ...orderForm, description: event.target.value })}
+                          className="mt-1 min-h-20 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
+                        />
+                      </label>
+                      <button className="inline-flex items-center gap-2 rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-white md:col-span-2" disabled={saving}>
+                        {saving ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                        Добави поръчка
+                      </button>
+                    </form>
+                  </FormCard>
+
+                  {reminderForm.order_id && (
+                    <FormCard title="Напомняне за поръчка" icon={<Bell size={19} />}>
+                      <form onSubmit={saveReminder} className="grid gap-3 md:grid-cols-2">
+                        <label className="md:col-span-2">
+                          <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Поръчка</span>
+                          <select
+                            value={reminderForm.order_id}
+                            onChange={(event) => setReminderForm({ ...reminderForm, order_id: event.target.value })}
+                            className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
+                          >
+                            {crm.orders.map((order) => (
+                              <option key={order.id} value={order.id}>
+                                {order.order_number} - {order.product || order.description || "Обща поръчка"}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <Input
+                          label="Дата и час"
+                          type="datetime-local"
+                          value={reminderForm.due_at}
+                          onChange={(value) => setReminderForm({ ...reminderForm, due_at: value })}
+                        />
+                        <Input
+                          label="Бележка"
+                          value={reminderForm.description}
+                          onChange={(value) => setReminderForm({ ...reminderForm, description: value })}
+                        />
+                        <div className="flex gap-2 md:col-span-2">
+                          <button className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-white" disabled={saving}>
+                            {saving ? <Loader2 size={16} className="animate-spin" /> : <Bell size={16} />}
+                            Запази напомняне
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setReminderForm({ order_id: "", due_at: "", description: "" })}
+                            className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-ink"
+                          >
+                            Отказ
+                          </button>
+                        </div>
+                      </form>
+                    </FormCard>
+                  )}
+                </section>
+              )}
 
               {activeView === "Calendar" && (
                 <section className="mt-5 grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
@@ -1569,21 +1691,6 @@ export function LiveCrmApp() {
                       >
                         <RefreshCw size={16} />
                         Синхронизирай
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSearch("");
-                          setCustomerForm(emptyCustomer);
-                          setOrderForm(emptyOrder);
-                          setNote("");
-                          setEditingNoteId("");
-                          setReminderForm({ order_id: "", due_at: "", description: "" });
-                        }}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink hover:bg-soft"
-                      >
-                        <RefreshCw size={16} />
-                        Изчисти формите
                       </button>
                     </div>
                   </article>
