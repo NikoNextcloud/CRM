@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { type DragEvent, type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   BarChart3,
@@ -142,7 +142,6 @@ const navItems = [
   "Clients",
   "Orders",
   "Calendar",
-  "Statistics",
   "Files",
   "Settings"
 ] as const;
@@ -154,7 +153,6 @@ const navLabels = {
   Clients: "Клиенти",
   Orders: "Поръчки",
   Calendar: "Календар",
-  Statistics: "Статистика",
   Files: "Файлове",
   Settings: "Настройки"
 };
@@ -164,10 +162,12 @@ const navIcons = {
   Clients: Users,
   Orders: ClipboardList,
   Calendar: CalendarDays,
-  Statistics: BarChart3,
   Files: FolderOpen,
   Settings
 };
+
+const defaultModuleOrder = ["stats", "forms", "lists", "kanban", "ordersForm", "calendar", "profile", "settings"] as const;
+type ModuleId = (typeof defaultModuleOrder)[number];
 
 const statuses: OrderStatus[] = [
   "New",
@@ -347,6 +347,8 @@ export function LiveCrmApp() {
   const [search, setSearch] = useState("");
   const [activeView, setActiveView] = useState<AppView>("Dashboard");
   const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [moduleOrder, setModuleOrder] = useState<ModuleId[]>([...defaultModuleOrder]);
+  const [draggedModule, setDraggedModule] = useState<ModuleId | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [customerForm, setCustomerForm] = useState(emptyCustomer);
   const [editingCustomer, setEditingCustomer] = useState(false);
@@ -427,11 +429,26 @@ export function LiveCrmApp() {
   useEffect(() => {
     const storedTheme = window.localStorage.getItem("printpilot:theme");
     if (storedTheme === "dark" || storedTheme === "light") setTheme(storedTheme);
+    const storedModuleOrder = window.localStorage.getItem("printpilot:module-order");
+    if (storedModuleOrder) {
+      try {
+        const parsed = JSON.parse(storedModuleOrder) as string[];
+        const valid = parsed.filter((item): item is ModuleId => defaultModuleOrder.includes(item as ModuleId));
+        const missing = defaultModuleOrder.filter((item) => !valid.includes(item));
+        setModuleOrder([...valid, ...missing]);
+      } catch {
+        setModuleOrder([...defaultModuleOrder]);
+      }
+    }
   }, []);
 
   useEffect(() => {
     window.localStorage.setItem("printpilot:theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    window.localStorage.setItem("printpilot:module-order", JSON.stringify(moduleOrder));
+  }, [moduleOrder]);
 
   useEffect(() => {
     if (!("Notification" in window)) return;
@@ -777,7 +794,7 @@ export function LiveCrmApp() {
   const calendarOrders = crm.orders.filter((order) => order.deadline_at);
   const selectedCalendarCustomer = crm.customers.find((customer) => customer.id === calendarForm.customer_id);
   const selectedCalendarOrder = crm.orders.find((order) => order.id === calendarForm.order_id);
-  const showStats = activeView === "Dashboard" || activeView === "Statistics";
+  const showStats = activeView === "Dashboard";
   const showCustomerForm = activeView === "Dashboard" || activeView === "Clients";
   const showOrderForm = activeView === "Dashboard";
   const showCustomerList = activeView === "Dashboard" || activeView === "Clients";
@@ -786,6 +803,29 @@ export function LiveCrmApp() {
   const showCustomerProfile = activeView === "Dashboard" || activeView === "Clients" || activeView === "Files";
   const showFileUpload = activeView === "Dashboard" || activeView === "Files" || activeView === "Clients";
   const showDeadlines = activeView === "Dashboard";
+
+  function moduleDragProps(id: ModuleId) {
+    const order = moduleOrder.includes(id) ? moduleOrder.indexOf(id) : defaultModuleOrder.indexOf(id);
+    return {
+      draggable: true,
+      onDragStart: () => setDraggedModule(id),
+      onDragOver: (event: DragEvent<HTMLElement>) => event.preventDefault(),
+      onDrop: (event: DragEvent<HTMLElement>) => {
+        event.preventDefault();
+        if (!draggedModule || draggedModule === id) return;
+        setModuleOrder((current) => {
+          const next = current.filter((item) => item !== draggedModule);
+          const targetIndex = next.indexOf(id);
+          next.splice(targetIndex < 0 ? next.length : targetIndex, 0, draggedModule);
+          return next;
+        });
+        setDraggedModule(null);
+      },
+      onDragEnd: () => setDraggedModule(null),
+      title: "Хвани и премести този модул",
+      style: { order }
+    };
+  }
 
   return (
     <main className={`${theme === "dark" ? "dark" : ""} min-h-screen pb-24 lg:pb-0`}>
@@ -886,8 +926,8 @@ export function LiveCrmApp() {
               </div>
             </div>
           ) : (
-            <>
-              {showStats && <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <div className="flex flex-col">
+              {showStats && <section {...moduleDragProps("stats")} className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                 {statCards.map((stat) => {
                   const Icon = stat.icon;
                   return (
@@ -902,7 +942,7 @@ export function LiveCrmApp() {
                 })}
               </section>}
 
-              {(showCustomerForm || showOrderForm) && <section className="mt-5 grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+              {(showCustomerForm || showOrderForm) && <section {...moduleDragProps("forms")} className="mt-5 grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
                 {showCustomerForm && <FormCard title={editingCustomer ? "Редакция на клиент" : "Добави клиент"} icon={<Users size={19} />}>
                   <form onSubmit={saveCustomer} className="grid gap-3 md:grid-cols-2">
                     <Input label="Име" value={customerForm.first_name} onChange={(value) => setCustomerForm({ ...customerForm, first_name: value })} />
@@ -1039,7 +1079,7 @@ export function LiveCrmApp() {
                 )}
               </section>}
 
-              {(showCustomerList || showOrderList) && <section className="mt-5 grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
+              {(showCustomerList || showOrderList) && <section {...moduleDragProps("lists")} className="mt-5 grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
                 {showCustomerList && <article className="premium-card rounded-2xl p-5">
                   <div className="mb-5 flex items-center justify-between">
                     <h3 className="text-lg font-bold text-ink">Клиенти на живо</h3>
@@ -1136,7 +1176,7 @@ export function LiveCrmApp() {
                 </article>}
               </section>}
 
-              {showKanban && <section className="mt-5 premium-card rounded-2xl p-5">
+              {showKanban && <section {...moduleDragProps("kanban")} className="mt-5 premium-card rounded-2xl p-5">
                 <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div>
                     <h3 className="text-lg font-bold text-ink">Kanban на живо</h3>
@@ -1171,7 +1211,10 @@ export function LiveCrmApp() {
                             <button
                               key={order.id}
                               draggable
-                              onDragStart={(event) => event.dataTransfer.setData("text/plain", order.id)}
+                              onDragStart={(event) => {
+                                event.stopPropagation();
+                                event.dataTransfer.setData("text/plain", order.id);
+                              }}
                               className={`w-full cursor-grab rounded-lg border-l-4 bg-white p-3 text-left shadow-subtle active:cursor-grabbing ${statusCardColors[order.status]}`}
                             >
                               <p className="text-sm font-semibold text-ink">{order.product || order.description || order.order_number}</p>
@@ -1186,7 +1229,7 @@ export function LiveCrmApp() {
               </section>}
 
               {activeView === "Orders" && (
-                <section className="mt-5 grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+                <section {...moduleDragProps("ordersForm")} className="mt-5 grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
                   <FormCard title="Добави поръчка" icon={<Plus size={19} />}>
                     <form onSubmit={saveOrder} className="grid gap-3 md:grid-cols-2">
                       <label className="md:col-span-2">
@@ -1284,7 +1327,7 @@ export function LiveCrmApp() {
               )}
 
               {activeView === "Calendar" && (
-                <section className="mt-5 grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
+                <section {...moduleDragProps("calendar")} className="mt-5 grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
                   <article className="premium-card rounded-2xl p-5">
                     <div className="mb-5 flex items-center justify-between">
                       <div>
@@ -1453,7 +1496,7 @@ export function LiveCrmApp() {
                 </section>
               )}
 
-              {(showCustomerProfile || showFileUpload || showDeadlines) && <section className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+              {(showCustomerProfile || showFileUpload || showDeadlines) && <section {...moduleDragProps("profile")} className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
                 {showCustomerProfile && <article className="premium-card rounded-2xl p-5">
                   <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
@@ -1649,7 +1692,7 @@ export function LiveCrmApp() {
               </section>}
 
               {activeView === "Settings" && (
-                <section className="mt-5 grid gap-5 xl:grid-cols-2">
+                <section {...moduleDragProps("settings")} className="mt-5 grid gap-5 xl:grid-cols-2">
                   <article className="premium-card rounded-2xl p-5">
                     <div className="mb-4 flex items-center gap-2">
                       <Settings size={19} className="text-accent" />
@@ -1706,7 +1749,7 @@ export function LiveCrmApp() {
                   </article>
                 </section>
               )}
-            </>
+            </div>
           )}
         </section>
       </div>
