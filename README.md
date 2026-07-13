@@ -1,132 +1,134 @@
 # PrintPilot AI CRM
 
-Premium CRM application for print shops, vinyl printing companies, sign makers, advertising agencies and branding studios.
+Премиум CRM система за печатници, фирми за винил, рекламни агенции, производители на табели, брандинг компании и бизнеси за рекламни материали.
 
-The app opens directly to the dashboard. There are no login, register, teams, roles or permissions screens because it is designed for one owner.
+Приложението се отваря директно в таблото. Няма login, register, екипи, роли или permissions екрани, защото е направено за един собственик.
 
-## What is included
+## Какво е включено
 
-- Next.js App Router, React, TypeScript and Tailwind CSS.
-- Modern bright SaaS interface inspired by Linear, Notion, Vercel Dashboard and Stripe Dashboard.
-- Dashboard metrics, revenue/profit/orders chart, recent customers, recent orders and upcoming deadlines.
-- Customer 360 view on one page: information, financial overview, orders, files, product gallery, timeline, notes-style activity and AI analysis.
-- Interactive Kanban board with drag and drop order movement.
-- Cloudflare AI API route with safe demo mode until real keys are added.
-- Supabase-ready database schema for customers, orders, order items, products, files, photos, notes, calls, timeline, notifications, tasks, payments, AI recommendations, activity logs and settings.
-- Vercel-ready project structure.
+- Next.js App Router, React, TypeScript и Tailwind CSS.
+- Модерен светъл SaaS интерфейс.
+- Метрики в реално време от Supabase.
+- Добавяне и редакция на клиенти.
+- Добавяне на поръчки.
+- Смяна на статуси от таблицата с поръчки.
+- Kanban табло с drag & drop, което записва статуса в Supabase.
+- 360° профил на клиента: информация, финансов преглед, поръчки, файлове, история, бележки и AI анализ.
+- Добавяне на бележки към клиенти.
+- Качване на файлове към Supabase Storage.
+- Отваряне/сваляне на качени файлове чрез временни Supabase signed links.
+- Cloudflare AI API маршрут, който анализира CRM данните в реално време.
+- Supabase SQL схема за клиенти, поръчки, продукти, файлове, снимки, бележки, обаждания, история, известия, задачи, плащания, AI препоръки, activity logs и настройки.
+- Готова структура за GitHub и Vercel.
 
-## Detailed installation guide
+## Подробна инсталация
 
-### 1. Install Node.js
+### 1. Инсталирай Node.js
 
-Install Node.js from:
+Свали Node.js от:
 
 https://nodejs.org/
 
-Choose the LTS version. After installation, restart your terminal or computer.
+Избери LTS версията. След инсталацията рестартирай терминала или компютъра.
 
-To check that it works, open Command Prompt or PowerShell and run:
+За проверка отвори Command Prompt или PowerShell и изпълни:
 
 ```bash
 node -v
 npm -v
 ```
 
-You should see version numbers.
+Трябва да видиш номера на версии.
 
-On this computer, the project can also use the existing bundled Node runtime in:
+На този компютър проектът може да използва и вече наличния Node runtime тук:
 
 ```text
 C:\Users\User\Documents\IPTV\.runtime\node-v24.18.0-win-x64
 ```
 
-The included `start-local.bat` automatically uses it when normal `npm` is not available.
+Файлът `start-local.bat` автоматично го използва, ако нормалният `npm` не е наличен.
 
-### 2. Open the project folder
+### 2. Отвори папката на проекта
 
-The project is here:
+Проектът е тук:
 
 ```text
 C:\Users\User\Documents\IPTV\printpilot-ai-crm
 ```
 
-You can open this folder in Visual Studio Code, Cursor, or another editor.
+Можеш да го отвориш във Visual Studio Code, Cursor или друг редактор.
 
-### 3. Install the app
+### 3. Инсталирай зависимостите
 
-Open a terminal inside the project folder and run:
+Отвори терминал в папката на проекта и изпълни:
 
 ```bash
 npm install
 ```
 
-This downloads Next.js, React, Tailwind, Supabase and the UI dependencies.
+Това сваля Next.js, React, Tailwind, Supabase и нужните UI зависимости.
 
-### 4. Start the local app
+### 4. Стартирай локално
 
-Run:
+Изпълни:
 
 ```bash
 npm run dev
 ```
 
-Then open:
+После отвори:
 
 ```text
 http://localhost:3000
 ```
 
-You can also double-click:
+Можеш и директно да стартираш:
 
 ```text
 start-local.bat
 ```
 
-This file installs dependencies and starts the local development server.
+Този файл инсталира зависимостите и стартира локалния сървър.
 
-### 5. Create Supabase project
+### 5. Създай Supabase проект
 
-1. Go to https://supabase.com/
-2. Create a new project.
-3. Open SQL Editor.
-4. Copy everything from:
+1. Отвори https://supabase.com/
+2. Създай нов проект.
+3. Отвори SQL Editor.
+4. Копирай всичко от:
 
 ```text
 supabase/schema.sql
 ```
 
-5. Paste it in Supabase SQL Editor.
-6. Click Run.
+5. Постави го в Supabase SQL Editor.
+6. Натисни Run.
 
-This creates all CRM tables.
+Това създава всички CRM таблици.
 
-### 6. Create Supabase Storage buckets
+SQL файлът създава и нужните Storage buckets:
 
-In Supabase, open Storage and create these buckets:
+- `order-files`
+- `product-photos`
+- `company-assets`
 
-```text
-order-files
-product-photos
-company-assets
-```
+Използвай `order-files` за PDF, AI, CDR, SVG, EPS, PNG, JPG, DXF, ZIP и RAR файлове към поръчки.
 
-Use `order-files` for PDF, AI, CDR, SVG, EPS, PNG, JPG, DXF, ZIP and RAR order files.
+### 6. Добави променливите на средата
 
-### 7. Add environment variables
-
-Make a copy of:
+Направи копие на:
 
 ```text
 .env.example
 ```
 
-Rename the copy to:
+Преименувай копието на:
 
 ```text
 .env.local
 ```
 
-Fill in:
+Попълни:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
@@ -137,29 +139,53 @@ CLOUDFLARE_API_TOKEN=your_cloudflare_api_token
 CLOUDFLARE_AI_MODEL=@cf/meta/llama-3.1-8b-instruct
 ```
 
-Restart the local server after changing `.env.local`.
+След промяна на `.env.local` рестартирай локалния сървър.
 
-### 8. Cloudflare AI setup
+Важно:
 
-1. Go to https://dash.cloudflare.com/
-2. Open your account.
-3. Create an API token with Workers AI access.
-4. Add the account ID and token to `.env.local`.
+- `SUPABASE_SERVICE_ROLE_KEY` трябва да остане само на сървъра.
+- Не го поставяй в кода, който се изпълнява в браузъра.
+- Проектът използва Next.js API routes, така че създаване, редакция и качване на файлове минават през сървъра.
 
-Without these keys, the AI route still works in demo mode and returns example recommendations.
+### 7. Настрой Cloudflare AI
 
-### 9. Deploy to Vercel
+1. Отвори https://dash.cloudflare.com/
+2. Влез в акаунта си.
+3. Създай API token с Workers AI достъп.
+4. Добави Account ID и token-а в `.env.local`.
 
-1. Create a GitHub repository.
-2. Upload or push this folder to GitHub.
-3. Go to https://vercel.com/
-4. Click Add New Project.
-5. Import the GitHub repository.
-6. Add the same environment variables from `.env.local` inside Vercel Project Settings.
+Без тези ключове AI route-ът работи в демо режим и връща примерни препоръки.
+
+### 8. Качване във Vercel
+
+1. Създай GitHub repository.
+2. Качи или push-ни тази папка в GitHub.
+3. Отвори https://vercel.com/
+4. Натисни Add New Project.
+5. Импортирай GitHub repository-то.
+6. Добави същите променливи от `.env.local` във Vercel Project Settings.
 7. Deploy.
 
-After deployment, the app will open directly to the CRM dashboard.
+След deploy приложението ще се отвори директно в CRM таблото.
 
-## Development notes
+### 9. Работа в реално време
 
-The current version includes realistic sample data so the interface is useful immediately. The next production step is to replace the sample arrays in `lib/data.ts` with Supabase queries and connect file upload controls to Supabase Storage.
+След като Supabase променливите са настроени:
+
+1. Добави клиент от панела “Добави клиент”.
+2. Добави поръчка към този клиент.
+3. Премести поръчката в Kanban таблото или смени статуса в таблицата.
+4. Отвори клиента в 360° профила.
+5. Добави бележки.
+6. Качи файлове към избраната поръчка.
+7. Натисни “Анализирай”, за да пуснеш Cloudflare AI върху CRM данните в реално време.
+
+## Бележки за разработка
+
+Приложението е свързано към Supabase данни в реално време през сървърни API маршрути:
+
+- `app/api/crm/route.ts`
+- `app/api/files/route.ts`
+- `app/api/ai/route.ts`
+
+Ако Supabase не е настроен, приложението се отваря, но показва предупреждение и няма данни в реално време.

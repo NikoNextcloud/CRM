@@ -28,6 +28,7 @@ create table if not exists orders (
   id uuid primary key default gen_random_uuid(),
   order_number text unique not null,
   customer_id uuid references customers(id) on delete cascade,
+  product text,
   status text not null default 'New',
   description text,
   quantity integer not null default 1,
@@ -161,6 +162,20 @@ create index if not exists idx_orders_customer_id on orders(customer_id);
 create index if not exists idx_orders_status on orders(status);
 create index if not exists idx_timeline_customer_id on timeline(customer_id);
 create index if not exists idx_files_order_id on files(order_id);
+
+alter table orders add column if not exists product text;
+
+insert into storage.buckets (id, name, public)
+values ('order-files', 'order-files', false)
+on conflict (id) do nothing;
+
+insert into storage.buckets (id, name, public)
+values ('product-photos', 'product-photos', true)
+on conflict (id) do nothing;
+
+insert into storage.buckets (id, name, public)
+values ('company-assets', 'company-assets', true)
+on conflict (id) do nothing;
 
 insert into settings (company_name, currency, vat_percent)
 values ('PrintPilot Studio', 'BGN', 20)

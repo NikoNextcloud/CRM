@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "PrintPilot AI CRM",
-  description: "Premium CRM for print shops, sign makers and advertising production teams."
+  description: "Премиум CRM за печатници, рекламни агенции и производители на рекламни материали."
 };
 
 export default function RootLayout({
@@ -12,7 +12,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="bg">
       <body>{children}</body>
     </html>
   );

@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 cd /d "%~dp0"
 set "LOCAL_NODE=C:\Users\User\Documents\IPTV\.runtime\node-v24.18.0-win-x64"
 if exist "%LOCAL_NODE%\npm.cmd" (
@@ -8,8 +9,8 @@ if exist "%LOCAL_NODE%\npm.cmd" (
   set "NPM_CMD=npm"
 )
 echo.
-echo Installing PrintPilot AI CRM dependencies...
+echo Инсталиране на зависимостите за PrintPilot AI CRM...
 call "%NPM_CMD%" install
 echo.
-echo Starting PrintPilot AI CRM on http://localhost:3000
+echo Стартиране на PrintPilot AI CRM на http://localhost:3000
 call "%NPM_CMD%" run dev

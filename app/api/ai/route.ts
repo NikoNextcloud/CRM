@@ -15,11 +15,11 @@ export async function POST(request: Request) {
     return NextResponse.json({
       mode: "demo",
       recommendation:
-        "Cloudflare AI is not configured yet. Add CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN to enable live recommendations.",
+        "Cloudflare AI още не е настроен. Добави CLOUDFLARE_ACCOUNT_ID и CLOUDFLARE_API_TOKEN, за да активираш препоръки в реално време.",
       ideas: [
-        "Contact inactive high-value clients before the end of the month.",
-        "Bundle design, print and installation for vehicle branding orders.",
-        "Offer seasonal window graphics to coffee shops and retail clients."
+        "Свържи се с неактивните клиенти с висока стойност преди края на месеца.",
+        "Предлагай пакет дизайн, печат и монтаж за автомобилно брандиране.",
+        "Предложи сезонна витринна реклама на кафенета и търговски обекти."
       ]
     });
   }
@@ -37,11 +37,11 @@ export async function POST(request: Request) {
           {
             role: "system",
             content:
-              "You are an expert CRM assistant for print shops, vinyl printing companies and sign makers. Return concise, practical business recommendations."
+              "Ти си експертен CRM асистент за печатници, фирми за винил, рекламни агенции и производители на табели. Връщай кратки, практични бизнес препоръки на български език."
           },
           {
             role: "user",
-            content: `${body.prompt ?? "Analyze this CRM data."}\n\nContext:\n${JSON.stringify(body.context ?? {}, null, 2)}`
+            content: `${body.prompt ?? "Анализирай тези CRM данни."}\n\nКонтекст:\n${JSON.stringify(body.context ?? {}, null, 2)}`
           }
         ]
       })
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
 
   if (!response.ok) {
     return NextResponse.json(
-      { error: "Cloudflare AI request failed", status: response.status },
+      { error: "Заявката към Cloudflare AI не беше успешна", status: response.status },
       { status: 502 }
     );
   }
