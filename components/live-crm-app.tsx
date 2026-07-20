@@ -7,6 +7,8 @@ import {
   Bell,
   CalendarDays,
   ClipboardList,
+  Copy,
+  FileText,
   LayoutDashboard,
   Loader2,
   MessageSquareText,
@@ -248,6 +250,7 @@ const emptyOrder = {
   customer_id: "",
   product: "",
   description: "",
+  notes: "",
   quantity: 1,
   price: 0,
   cost: 0,
@@ -348,6 +351,8 @@ export function LiveCrmApp() {
   const [search, setSearch] = useState("");
   const [activeView, setActiveView] = useState<AppView>("Dashboard");
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [archiveSearch, setArchiveSearch] = useState("");
+  const [archivePeriod, setArchivePeriod] = useState<"all" | "month" | "3months" | "year">("all");
   const [moduleOrder, setModuleOrder] = useState<ModuleId[]>([...defaultModuleOrder]);
   const [draggedModule, setDraggedModule] = useState<ModuleId | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
@@ -402,6 +407,27 @@ export function LiveCrmApp() {
     [crm.orders]
   );
 
+  const filteredArchivedOrders = useMemo(() => {
+    let list = archivedOrders;
+    if (archivePeriod !== "all") {
+      const from = new Date();
+      if (archivePeriod === "month") from.setMonth(from.getMonth() - 1);
+      if (archivePeriod === "3months") from.setMonth(from.getMonth() - 3);
+      if (archivePeriod === "year") from.setFullYear(from.getFullYear() - 1);
+      const fromKey = formatLocalDateKey(from);
+      list = list.filter((order) => dateKey(order.created_at) >= fromKey);
+    }
+    const query = archiveSearch.toLowerCase().trim();
+    if (!query) return list;
+    return list.filter((order) =>
+      [order.order_number, order.product, order.description, order.notes, customerName(crm.customers, order.customer_id)]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(query)
+    );
+  }, [archivedOrders, archiveSearch, archivePeriod, crm.customers]);
+
   const filteredOrders = useMemo(() => {
     const visibleOrders = crm.orders.filter((order) => order.status !== "Archived");
     const query = search.toLowerCase().trim();
@@ -422,6 +448,9 @@ export function LiveCrmApp() {
 
   useEffect(() => {
     loadCrm();
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    }
   }, []);
 
   useEffect(() => {
@@ -465,6 +494,65 @@ export function LiveCrmApp() {
   useEffect(() => {
     if (!selectedCustomerId && crm.customers[0]) setSelectedCustomerId(crm.customers[0].id);
   }, [crm.customers, selectedCustomerId]);
+
+  const monthlyRevenue = useMemo(() => {
+    const months: { key: string; label: string; total: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(1);
+      date.setMonth(date.getMonth() - i);
+      months.push({
+        key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
+        label: new Intl.DateTimeFormat("bg-BG", { month: "short" }).format(date),
+        total: 0
+      });
+    }
+    for (const order of crm.orders) {
+      const key = String(order.created_at || "").slice(0, 7);
+      const bucket = months.find((month) => month.key === key);
+      if (bucket) bucket.total += money(order.price);
+    }
+    return months;
+  }, [crm.orders]);
+
+  const topClients = useMemo(() => {
+    return crm.customers
+      .map((customer) => ({
+        customer,
+        revenue: crm.orders
+          .filter((order) => order.customer_id === customer.id)
+          .reduce((sum, order) => sum + money(order.price), 0)
+      }))
+      .filter((item) => item.revenue > 0)
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
+  }, [crm.customers, crm.orders]);
+
+  const upcomingDeadlineOrders = useMemo(() => {
+    const todayKey = formatLocalDateKey(new Date());
+    const limit = new Date();
+    limit.setDate(limit.getDate() + 2);
+    const limitKey = formatLocalDateKey(limit);
+    return crm.orders.filter((order) => {
+      if (!order.deadline_at) return false;
+      if (["Completed", "Cancelled", "Archived"].includes(order.status)) return false;
+      const key = dateKey(order.deadline_at);
+      return key >= todayKey && key <= limitKey;
+    });
+  }, [crm.orders]);
+
+  useEffect(() => {
+    if (!upcomingDeadlineOrders.length) return;
+    if ("Notification" in window && Notification.permission === "granted") {
+      const shownKey = `printpilot:deadline-alert:${formatLocalDateKey(new Date())}`;
+      if (!window.localStorage.getItem(shownKey)) {
+        new Notification("Наближаващи срокове", {
+          body: upcomingDeadlineOrders.map((order) => `${order.order_number} · ${shortDate(order.deadline_at)}`).join("\n")
+        });
+        window.localStorage.setItem(shownKey, "1");
+      }
+    }
+  }, [upcomingDeadlineOrders]);
 
   useEffect(() => {
     if (!calendarForm.customer_id && crm.customers[0]) {
@@ -554,6 +642,7 @@ export function LiveCrmApp() {
       ...orderForm,
       product: productName,
       description: orderForm.description.trim(),
+      notes: orderForm.notes.trim(),
       quantity: Number(orderForm.quantity) || 1,
       price: Number(orderForm.price) || 0,
       cost: Number(orderForm.cost) || 0,
@@ -577,6 +666,7 @@ export function LiveCrmApp() {
       customer_id: order.customer_id,
       product: order.product || "",
       description: order.description || "",
+      notes: order.notes || "",
       quantity: order.quantity || 1,
       price: money(order.price),
       cost: money(order.cost),
@@ -616,6 +706,100 @@ export function LiveCrmApp() {
     link.click();
     URL.revokeObjectURL(url);
     setMessage("Поръчките са експортирани в CSV файл.");
+  }
+
+  async function duplicateOrder(order: OrderRow) {
+    await crmAction(
+      {
+        action: "createOrder",
+        payload: {
+          customer_id: order.customer_id,
+          product: order.product || "Обща поръчка",
+          description: order.description || "",
+          notes: order.notes || "",
+          quantity: order.quantity || 1,
+          price: money(order.price),
+          cost: money(order.cost),
+          deadline_at: null,
+          status: "New"
+        }
+      },
+      `Поръчката е дублирана като нова (копие на ${order.order_number}).`
+    );
+  }
+
+  function openOfferPdf(order: OrderRow) {
+    const customer = crm.customers.find((item) => item.id === order.customer_id);
+    const price = money(order.price);
+    const today = new Intl.DateTimeFormat("bg-BG", { day: "2-digit", month: "long", year: "numeric" }).format(new Date());
+    const html = `<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="utf-8" />
+<title>Оферта ${order.order_number}</title>
+<style>
+  body { font-family: Arial, sans-serif; color: #0f172a; margin: 40px; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #0f172a; padding-bottom: 16px; }
+  h1 { margin: 0; font-size: 26px; }
+  .muted { color: #64748b; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 28px; }
+  th { text-align: left; background: #f1f5f9; padding: 10px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; }
+  td { padding: 12px 10px; border-bottom: 1px solid #e2e8f0; font-size: 15px; }
+  .total { margin-top: 20px; text-align: right; font-size: 20px; font-weight: bold; }
+  .box { margin-top: 24px; display: flex; gap: 40px; }
+  .box div { flex: 1; }
+  .box h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; margin-bottom: 6px; }
+  .footer { margin-top: 48px; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 12px; }
+  @media print { body { margin: 20px; } }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div>
+      <h1>ОФЕРТА</h1>
+      <p class="muted">№ ${order.order_number} · ${today}</p>
+    </div>
+    <div style="text-align:right">
+      <strong style="font-size:18px">Винил Печат</strong>
+      <p class="muted">Печатно производство и реклама</p>
+    </div>
+  </div>
+  <div class="box">
+    <div>
+      <h3>Клиент</h3>
+      <p><strong>${customer ? (customer.company || `${customer.first_name} ${customer.last_name}`) : "Клиент"}</strong></p>
+      <p class="muted">${[customer?.phone, customer?.email].filter(Boolean).join(" · ") || ""}</p>
+      <p class="muted">${[customer?.address, customer?.city].filter(Boolean).join(", ") || ""}</p>
+      ${customer?.vat_number ? `<p class="muted">ДДС №: ${customer.vat_number}</p>` : ""}
+    </div>
+    <div>
+      <h3>Условия</h3>
+      <p class="muted">Валидност на офертата: 14 дни</p>
+      ${order.deadline_at ? `<p class="muted">Срок за изпълнение: ${shortDate(order.deadline_at)}</p>` : ""}
+    </div>
+  </div>
+  <table>
+    <thead><tr><th>Продукт / Услуга</th><th>Количество</th><th style="text-align:right">Стойност</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>${order.product || "Обща поръчка"}</strong>${order.description ? `<br /><span class="muted">${order.description}</span>` : ""}</td>
+        <td>${order.quantity || 1}</td>
+        <td style="text-align:right">${price.toFixed(2)} €</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="total">Общо: ${price.toFixed(2)} €</p>
+  <div class="footer">Благодарим за доверието! Тази оферта е генерирана автоматично от PrintPilot CRM.</div>
+  <script>window.onload = () => window.print();</script>
+</body>
+</html>`;
+    const win = window.open("", "_blank");
+    if (!win) {
+      setMessage("Разреши изскачащите прозорци, за да отвориш PDF офертата.");
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
   }
 
   async function deleteOrder(orderId: string) {
@@ -956,6 +1140,27 @@ export function LiveCrmApp() {
             )}
           </header>
 
+          {!loading && upcomingDeadlineOrders.length > 0 && (
+            <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-subtle">
+              <div className="flex items-center gap-2 font-bold text-amber-900">
+                <Bell size={18} />
+                Наближаващи срокове ({upcomingDeadlineOrders.length})
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {upcomingDeadlineOrders.map((order) => (
+                  <button
+                    key={order.id}
+                    type="button"
+                    onClick={() => startEditOrder(order)}
+                    className="rounded-xl border border-amber-200 bg-white px-3 py-1.5 text-sm font-semibold text-amber-900 transition hover:bg-amber-100"
+                  >
+                    {order.product || order.order_number} · {shortDate(order.deadline_at)} · {customerName(crm.customers, order.customer_id)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {loading ? (
             <div className="grid min-h-96 place-items-center rounded-2xl border border-line bg-white shadow-subtle">
               <div className="flex items-center gap-3 text-muted">
@@ -979,6 +1184,63 @@ export function LiveCrmApp() {
                   );
                 })}
               </section>}
+
+              {showStats && (
+                <section className="mt-5 grid gap-5 lg:grid-cols-2">
+                  <article className="premium-card rounded-2xl p-5">
+                    <div className="mb-4 flex items-center gap-2">
+                      <BarChart3 size={19} className="text-accent" />
+                      <h3 className="text-lg font-bold text-ink">Оборот по месеци</h3>
+                    </div>
+                    <div className="flex h-44 items-end gap-2 sm:gap-3">
+                      {monthlyRevenue.map((month) => {
+                        const max = Math.max(...monthlyRevenue.map((item) => item.total), 1);
+                        const height = Math.max((month.total / max) * 100, month.total > 0 ? 6 : 2);
+                        return (
+                          <div key={month.key} className="flex h-full flex-1 flex-col items-center justify-end gap-1">
+                            <span className="text-[11px] font-bold text-ink">{month.total > 0 ? currency(month.total) : ""}</span>
+                            <div
+                              className="w-full rounded-t-lg bg-gradient-to-t from-blue-600 to-blue-400 transition-all"
+                              style={{ height: `${height}%` }}
+                              title={`${month.label}: ${currency(month.total)}`}
+                            />
+                            <span className="text-xs font-semibold text-muted">{month.label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </article>
+                  <article className="premium-card rounded-2xl p-5">
+                    <div className="mb-4 flex items-center gap-2">
+                      <TrendingUp size={19} className="text-teal" />
+                      <h3 className="text-lg font-bold text-ink">Топ 5 клиенти</h3>
+                    </div>
+                    {topClients.length ? (
+                      <div className="space-y-3">
+                        {topClients.map((item, index) => {
+                          const max = topClients[0].revenue || 1;
+                          return (
+                            <div key={item.customer.id}>
+                              <div className="mb-1 flex items-center justify-between text-sm">
+                                <span className="font-semibold text-ink">{index + 1}. {displayCustomer(item.customer)}</span>
+                                <span className="font-bold text-ink">{currency(item.revenue)}</span>
+                              </div>
+                              <div className="h-2.5 w-full rounded-full bg-soft">
+                                <div
+                                  className="h-2.5 rounded-full bg-gradient-to-r from-teal-500 to-emerald-400"
+                                  style={{ width: `${(item.revenue / max) * 100}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted">Все още няма поръчки с приходи.</p>
+                    )}
+                  </article>
+                </section>
+              )}
 
               {(showCustomerForm || showOrderForm) && <section {...moduleDragProps("forms")} className={`mt-5 grid gap-5 ${showCustomerForm && showOrderForm ? "xl:grid-cols-[0.95fr_1.05fr]" : "grid-cols-1"}`}>
                 {showCustomerForm && <FormCard title={editingCustomer ? "Редакция на клиент" : "Добави клиент"} icon={<Users size={19} />}>
@@ -1062,6 +1324,15 @@ export function LiveCrmApp() {
                         value={orderForm.description}
                         onChange={(event) => setOrderForm({ ...orderForm, description: event.target.value })}
                         className="mt-1 min-h-20 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
+                      />
+                    </label>
+                    <label className="md:col-span-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Бележка към поръчката</span>
+                      <textarea
+                        value={orderForm.notes}
+                        onChange={(event) => setOrderForm({ ...orderForm, notes: event.target.value })}
+                        placeholder="Напр. клиентът иска мат ламинат..."
+                        className="mt-1 min-h-16 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
                       />
                     </label>
                     <div className="flex gap-2 md:col-span-2">
@@ -1175,7 +1446,29 @@ export function LiveCrmApp() {
                               <span className="mt-1 inline-block rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold uppercase text-rose-700">Просрочена</span>
                             )}
                           </div>
-                          <span className="shrink-0 text-base font-bold text-ink">{currency(money(order.price))}</span>
+                          <div className="shrink-0 text-right">
+                            <span className="block text-base font-bold text-ink">{currency(money(order.price))}</span>
+                            <span className={`text-sm font-semibold ${money(order.price) - money(order.cost) >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                              +{currency(money(order.price) - money(order.cost))}
+                            </span>
+                          </div>
+                        </div>
+                        {order.notes && <p className="mt-2 rounded-lg bg-soft px-3 py-2 text-sm text-slate-700">{order.notes}</p>}
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => duplicateOrder(order)}
+                            className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-white text-sm font-semibold text-slate-600"
+                          >
+                            <Copy size={16} /> Дублирай
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openOfferPdf(order)}
+                            className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 text-sm font-semibold text-blue-700"
+                          >
+                            <FileText size={16} /> Оферта
+                          </button>
                         </div>
                         <div className="mt-3 flex items-center justify-between gap-2">
                           <select
@@ -1230,6 +1523,7 @@ export function LiveCrmApp() {
                           <th className="px-4 py-3">Дата</th>
                           <th className="px-4 py-3">Статус</th>
                           <th className="px-4 py-3 text-right">Стойност</th>
+                          <th className="px-4 py-3 text-right">Печалба</th>
                           <th className="px-4 py-3 text-right">Действие</th>
                         </tr>
                       </thead>
@@ -1260,6 +1554,14 @@ export function LiveCrmApp() {
                             </td>
                             <td className="px-4 py-3 text-right font-semibold text-ink">{currency(money(order.price))}</td>
                             <td className="px-4 py-3 text-right">
+                              <p className={`font-semibold ${money(order.price) - money(order.cost) >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                                {currency(money(order.price) - money(order.cost))}
+                              </p>
+                              {money(order.price) > 0 && (
+                                <p className="text-xs text-muted">{Math.round(((money(order.price) - money(order.cost)) / money(order.price)) * 100)}%</p>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right">
                               <button
                                 type="button"
                                 onClick={() => startEditOrder(order)}
@@ -1267,6 +1569,22 @@ export function LiveCrmApp() {
                                 title="Редактирай поръчката"
                               >
                                 <Pencil size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => duplicateOrder(order)}
+                                className="mr-2 inline-flex items-center justify-center rounded-lg border border-line bg-white p-2 text-slate-600 transition hover:bg-soft hover:text-ink"
+                                title="Дублирай поръчката"
+                              >
+                                <Copy size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openOfferPdf(order)}
+                                className="mr-2 inline-flex items-center justify-center rounded-lg border border-blue-200 bg-blue-50 p-2 text-blue-700 transition hover:bg-blue-100"
+                                title="PDF оферта"
+                              >
+                                <FileText size={16} />
                               </button>
                               <button
                                 type="button"
@@ -1428,6 +1746,15 @@ export function LiveCrmApp() {
                           className="mt-1 min-h-20 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
                         />
                       </label>
+                      <label className="md:col-span-2">
+                        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Бележка към поръчката</span>
+                        <textarea
+                          value={orderForm.notes}
+                          onChange={(event) => setOrderForm({ ...orderForm, notes: event.target.value })}
+                          placeholder="Напр. клиентът иска мат ламинат..."
+                          className="mt-1 min-h-16 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
+                        />
+                      </label>
                       <div className="flex gap-2 md:col-span-2">
                         <button className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-white" disabled={saving}>
                           {saving ? <Loader2 size={16} className="animate-spin" /> : editingOrderId ? <Save size={16} /> : <Plus size={16} />}
@@ -1500,9 +1827,30 @@ export function LiveCrmApp() {
                       Общо в архива: {archivedOrders.length}
                     </span>
                   </div>
-                  {archivedOrders.length ? (
+                  <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+                    <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-line bg-soft px-3 py-2 text-sm text-muted">
+                      <Search size={16} />
+                      <input
+                        value={archiveSearch}
+                        onChange={(event) => setArchiveSearch(event.target.value)}
+                        className="w-full bg-transparent outline-none placeholder:text-slate-400"
+                        placeholder="Търси в архива по номер, клиент, продукт..."
+                      />
+                    </label>
+                    <select
+                      value={archivePeriod}
+                      onChange={(event) => setArchivePeriod(event.target.value as typeof archivePeriod)}
+                      className="rounded-xl border border-line bg-white px-3 py-2 text-sm font-semibold text-ink outline-none focus:border-accent"
+                    >
+                      <option value="all">Всички периоди</option>
+                      <option value="month">Последния месец</option>
+                      <option value="3months">Последните 3 месеца</option>
+                      <option value="year">Последната година</option>
+                    </select>
+                  </div>
+                  {filteredArchivedOrders.length ? (
                     <div className="space-y-3">
-                      {archivedOrders
+                      {filteredArchivedOrders
                         .slice()
                         .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
                         .map((order) => (
@@ -1537,6 +1885,22 @@ export function LiveCrmApp() {
                               </button>
                               <button
                                 type="button"
+                                onClick={() => duplicateOrder(order)}
+                                className="inline-flex items-center justify-center rounded-lg border border-line bg-white p-2 text-slate-600 transition hover:bg-soft hover:text-ink"
+                                title="Дублирай като нова поръчка"
+                              >
+                                <Copy size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openOfferPdf(order)}
+                                className="inline-flex items-center justify-center rounded-lg border border-blue-200 bg-blue-50 p-2 text-blue-700 transition hover:bg-blue-100"
+                                title="PDF оферта"
+                              >
+                                <FileText size={16} />
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => deleteOrder(order.id)}
                                 className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 p-2 text-rose-700 transition hover:bg-rose-100"
                                 title="Изтрий завинаги"
@@ -1548,7 +1912,7 @@ export function LiveCrmApp() {
                         ))}
                     </div>
                   ) : (
-                    <p className="rounded-xl bg-soft p-4 text-sm text-muted">Архивът е празен. Когато завършиш или архивираш поръчка, тя ще се появи тук.</p>
+                    <p className="rounded-xl bg-soft p-4 text-sm text-muted">{archivedOrders.length ? "Няма поръчки, отговарящи на търсенето." : "Архивът е празен. Когато завършиш или архивираш поръчка, тя ще се появи тук."}</p>
                   )}
                 </section>
               )}
