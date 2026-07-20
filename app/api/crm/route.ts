@@ -257,6 +257,14 @@ export async function POST(request: Request) {
       .select()
       .single();
 
+    if (error && error.message.toLowerCase().includes("tracking_number")) {
+      const { tracking_number, ...fallbackInsert } = orderInsert;
+      orderInsert = fallbackInsert;
+      const retryTracking = await supabase.from("orders").insert(orderInsert).select().single();
+      data = retryTracking.data;
+      error = retryTracking.error;
+    }
+
     if (error && error.message.toLowerCase().includes("product")) {
       const { product, ...fallbackInsert } = orderInsert;
       orderInsert = {
@@ -282,12 +290,19 @@ export async function POST(request: Request) {
   }
 
   if (body.action === "updateOrder") {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("orders")
       .update(body.payload)
       .eq("id", body.id)
       .select()
       .single();
+
+    if (error && error.message.toLowerCase().includes("tracking_number")) {
+      const { tracking_number, ...fallbackPayload } = body.payload;
+      const retry = await supabase.from("orders").update(fallbackPayload).eq("id", body.id).select().single();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

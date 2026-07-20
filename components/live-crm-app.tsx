@@ -21,6 +21,7 @@ import {
   RefreshCw,
   Save,
   Search,
+  Send,
   Settings,
   Sparkles,
   Trash2,
@@ -60,6 +61,7 @@ type OrderRow = {
   created_at: string;
   deadline_at: string | null;
   notes: string | null;
+  tracking_number?: string | null;
 };
 
 type FileRow = {
@@ -253,6 +255,7 @@ const emptyOrder = {
   product: "",
   description: "",
   notes: "",
+  tracking_number: "",
   quantity: 1,
   price: 0,
   cost: 0,
@@ -503,6 +506,24 @@ export function LiveCrmApp() {
     }
   }
 
+  async function runCloudBackup(showMessages = true) {
+    try {
+      const response = await fetch("/api/backup", { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Бекъпът не беше успешен.");
+      window.localStorage.setItem("printpilot:last-cloud-backup", formatLocalDateKey(new Date()));
+      if (showMessages) setMessage(`Бекъпът е записан в облака (${data.file}).`);
+      return true;
+    } catch (error) {
+      if (showMessages) setMessage(error instanceof Error ? error.message : "Бекъпът не беше успешен.");
+      return false;
+    }
+  }
+
+  function downloadBackup() {
+    window.open("/api/backup?download=1", "_blank");
+  }
+
   async function logout() {
     await fetch("/api/auth", { method: "DELETE" });
     setAuthState("login");
@@ -559,6 +580,19 @@ export function LiveCrmApp() {
   useEffect(() => {
     if (!selectedCustomerId && crm.customers[0]) setSelectedCustomerId(crm.customers[0].id);
   }, [crm.customers, selectedCustomerId]);
+
+  useEffect(() => {
+    if (authState !== "authed" || !crm.configured) return;
+    const lastBackup = window.localStorage.getItem("printpilot:last-cloud-backup");
+    const today = formatLocalDateKey(new Date());
+    if (lastBackup) {
+      const last = new Date(lastBackup);
+      const diffDays = (new Date(today).getTime() - last.getTime()) / (1000 * 60 * 60 * 24);
+      if (diffDays < 7) return;
+    }
+    runCloudBackup(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authState, crm.configured]);
 
   const monthlyRevenue = useMemo(() => {
     const months: { key: string; label: string; total: number }[] = [];
@@ -708,6 +742,7 @@ export function LiveCrmApp() {
       product: productName,
       description: orderForm.description.trim(),
       notes: orderForm.notes.trim(),
+      tracking_number: orderForm.tracking_number.trim(),
       quantity: Number(orderForm.quantity) || 1,
       price: Number(orderForm.price) || 0,
       cost: Number(orderForm.cost) || 0,
@@ -732,6 +767,7 @@ export function LiveCrmApp() {
       product: order.product || "",
       description: order.description || "",
       notes: order.notes || "",
+      tracking_number: order.tracking_number || "",
       quantity: order.quantity || 1,
       price: money(order.price),
       cost: money(order.cost),
@@ -782,6 +818,7 @@ export function LiveCrmApp() {
           product: order.product || "Обща поръчка",
           description: order.description || "",
           notes: order.notes || "",
+          tracking_number: "",
           quantity: order.quantity || 1,
           price: money(order.price),
           cost: money(order.cost),
@@ -865,6 +902,21 @@ export function LiveCrmApp() {
     }
     win.document.write(html);
     win.document.close();
+  }
+
+  function shareOrderViber(order: OrderRow) {
+    const customer = crm.customers.find((item) => item.id === order.customer_id);
+    const name = customer ? (customer.first_name || customer.company || "клиент") : "клиент";
+    const lines = [
+      `Здравейте, ${name}!`,
+      `Поръчката Ви ${order.order_number} – ${order.product || "поръчка"} е готова за получаване. ✅`
+    ];
+    if (order.tracking_number) {
+      lines.push(`Номер на товарителница: ${order.tracking_number}`);
+    }
+    lines.push("Благодарим Ви, че избрахте нас! – Винил Печат");
+    const url = `viber://forward?text=${encodeURIComponent(lines.join("\n"))}`;
+    window.location.href = url;
   }
 
   async function deleteOrder(orderId: string) {
@@ -1426,6 +1478,7 @@ export function LiveCrmApp() {
                     <Input label="Цена" type="number" value={String(orderForm.price)} onChange={(value) => setOrderForm({ ...orderForm, price: Number(value) })} />
                     <Input label="Разход" type="number" value={String(orderForm.cost)} onChange={(value) => setOrderForm({ ...orderForm, cost: Number(value) })} />
                     <Input label="Краен срок" type="date" value={orderForm.deadline_at} onChange={(value) => setOrderForm({ ...orderForm, deadline_at: value })} />
+                    <Input label="Номер на товарителница" value={orderForm.tracking_number} onChange={(value) => setOrderForm({ ...orderForm, tracking_number: value })} />
                     <label className="md:col-span-2">
                       <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Описание</span>
                       <textarea
@@ -1550,6 +1603,7 @@ export function LiveCrmApp() {
                             <p className="truncate text-sm text-slate-700">{order.product || order.description || "Обща поръчка"}</p>
                             <p className="mt-0.5 truncate text-sm text-muted">{customerName(crm.customers, order.customer_id)}</p>
                             <p className="mt-0.5 text-sm text-muted">Създадена: {shortDate(order.created_at)}</p>
+                            {order.tracking_number && <p className="mt-0.5 text-sm text-muted">Товарителница: {order.tracking_number}</p>}
                             {isOverdue(order) && (
                               <span className="mt-1 inline-block rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold uppercase text-rose-700">Просрочена</span>
                             )}
@@ -1576,6 +1630,13 @@ export function LiveCrmApp() {
                             className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 text-sm font-semibold text-blue-700"
                           >
                             <FileText size={16} /> Оферта
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => shareOrderViber(order)}
+                            className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 text-sm font-semibold text-violet-700"
+                          >
+                            <Send size={16} /> Viber
                           </button>
                         </div>
                         <div className="mt-3 flex items-center justify-between gap-2">
@@ -1693,6 +1754,14 @@ export function LiveCrmApp() {
                                 title="PDF оферта"
                               >
                                 <FileText size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => shareOrderViber(order)}
+                                className="mr-2 inline-flex items-center justify-center rounded-lg border border-violet-200 bg-violet-50 p-2 text-violet-700 transition hover:bg-violet-100"
+                                title="Изпрати по Viber: Поръчката е готова за получаване"
+                              >
+                                <Send size={16} />
                               </button>
                               <button
                                 type="button"
@@ -1846,6 +1915,8 @@ export function LiveCrmApp() {
                       <Input label="Цена" type="number" value={String(orderForm.price)} onChange={(value) => setOrderForm({ ...orderForm, price: Number(value) })} />
                       <Input label="Разход" type="number" value={String(orderForm.cost)} onChange={(value) => setOrderForm({ ...orderForm, cost: Number(value) })} />
                       <Input label="Краен срок" type="date" value={orderForm.deadline_at} onChange={(value) => setOrderForm({ ...orderForm, deadline_at: value })} />
+                    <Input label="Номер на товарителница" value={orderForm.tracking_number} onChange={(value) => setOrderForm({ ...orderForm, tracking_number: value })} />
+                      <Input label="Номер на товарителница" value={orderForm.tracking_number} onChange={(value) => setOrderForm({ ...orderForm, tracking_number: value })} />
                       <label className="md:col-span-2">
                         <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Описание</span>
                         <textarea
@@ -2006,6 +2077,14 @@ export function LiveCrmApp() {
                                 title="PDF оферта"
                               >
                                 <FileText size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => shareOrderViber(order)}
+                                className="inline-flex items-center justify-center rounded-lg border border-violet-200 bg-violet-50 p-2 text-violet-700 transition hover:bg-violet-100"
+                                title="Изпрати по Viber"
+                              >
+                                <Send size={16} />
                               </button>
                               <button
                                 type="button"
@@ -2362,6 +2441,7 @@ export function LiveCrmApp() {
                       <p>Supabase статус: {crm.configured ? "свързан" : "не е свързан"}</p>
                       <p>За запис на клиенти, поръчки и файлове трябва да са добавени Supabase променливите на средата.</p>
                       <p>За AI анализ трябва да са добавени Cloudflare AI ключовете.</p>
+                      <p>Автоматичен бекъп: всяка седмица данните се записват в Supabase Storage (пазят се последните 12 копия).</p>
                       {authEnabled ? (
                         <p className="rounded-xl bg-emerald-50 px-3 py-2 font-semibold text-emerald-700">Защитата с парола е включена.</p>
                       ) : (
@@ -2393,6 +2473,22 @@ export function LiveCrmApp() {
                       >
                         <RefreshCw size={16} />
                         Синхронизирай
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => runCloudBackup(true)}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink hover:bg-soft"
+                      >
+                        <Save size={16} />
+                        Запази бекъп в облака
+                      </button>
+                      <button
+                        type="button"
+                        onClick={downloadBackup}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink hover:bg-soft"
+                      >
+                        <FileText size={16} />
+                        Свали бекъп (JSON)
                       </button>
                       {authEnabled && (
                         <button
