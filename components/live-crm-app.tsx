@@ -14,13 +14,11 @@ import {
   Pencil,
   Phone,
   Plus,
-  Moon,
   RefreshCw,
   Save,
   Search,
   Settings,
   Sparkles,
-  Sun,
   Trash2,
   TrendingUp,
   Users
@@ -344,7 +342,6 @@ export function LiveCrmApp() {
   const [search, setSearch] = useState("");
   const [activeView, setActiveView] = useState<AppView>("Dashboard");
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  const [theme, setTheme] = useState<"light" | "dark">("light");
   const [moduleOrder, setModuleOrder] = useState<ModuleId[]>([...defaultModuleOrder]);
   const [draggedModule, setDraggedModule] = useState<ModuleId | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
@@ -422,8 +419,6 @@ export function LiveCrmApp() {
   }, []);
 
   useEffect(() => {
-    const storedTheme = window.localStorage.getItem("printpilot:theme");
-    if (storedTheme === "dark" || storedTheme === "light") setTheme(storedTheme);
     const storedModuleOrder = window.localStorage.getItem("printpilot:module-order");
     if (storedModuleOrder) {
       try {
@@ -436,10 +431,6 @@ export function LiveCrmApp() {
       }
     }
   }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem("printpilot:theme", theme);
-  }, [theme]);
 
   useEffect(() => {
     window.localStorage.setItem("printpilot:module-order", JSON.stringify(moduleOrder));
@@ -793,7 +784,7 @@ export function LiveCrmApp() {
   }
 
   return (
-    <main className={`${theme === "dark" ? "dark" : ""} min-h-screen pb-24 lg:pb-0`}>
+    <main className="min-h-screen pb-24 lg:pb-0">
       <div className="flex min-h-screen">
         <aside className="glass-panel sticky top-0 hidden h-screen w-72 shrink-0 flex-col justify-between p-5 lg:flex">
           <div>
@@ -858,14 +849,6 @@ export function LiveCrmApp() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                  className="grid h-10 w-10 place-items-center rounded-xl border border-line text-ink"
-                  title="Смени темата"
-                >
-                  {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-                </button>
-                <button
-                  type="button"
                   onClick={loadCrm}
                   className="grid h-10 w-10 place-items-center rounded-xl border border-line text-ink"
                   title="Обнови"
@@ -918,15 +901,6 @@ export function LiveCrmApp() {
                     placeholder="Търси клиенти, поръчки..."
                   />
                 </label>
-                <button
-                  type="button"
-                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink hover:bg-soft"
-                  title={theme === "dark" ? "Включи бяла тема" : "Включи черна тема"}
-                >
-                  {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
-                  {theme === "dark" ? "Бяла" : "Черна"}
-                </button>
                 <button
                   onClick={loadCrm}
                   className="inline-flex items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink hover:bg-soft"
@@ -1118,10 +1092,10 @@ export function LiveCrmApp() {
                 )}
               </section>}
 
-              {(showCustomerList || showOrderList) && <section {...moduleDragProps("lists")} className="mt-5 grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
+              {(showCustomerList || showOrderList) && <section {...moduleDragProps("lists")} className={`mt-5 grid gap-5 ${showCustomerList && showOrderList ? "xl:grid-cols-[0.8fr_1.2fr]" : "grid-cols-1"}`}>
                 {showCustomerList && <article className="premium-card rounded-2xl p-5">
                   <div className="mb-5 flex items-center justify-between">
-                    <h3 className="text-lg font-bold text-ink">Клиенти на живо</h3>
+                    <h3 className="text-lg font-bold text-ink">Клиенти</h3>
                     <span className="text-sm text-muted">Показани: {filteredCustomers.length}</span>
                   </div>
                   <div className="space-y-3">
@@ -1152,7 +1126,7 @@ export function LiveCrmApp() {
 
                 {showOrderList && <article className="premium-card rounded-2xl p-5">
                   <div className="mb-5 flex items-center justify-between">
-                    <h3 className="text-lg font-bold text-ink">Поръчки на живо</h3>
+                    <h3 className="text-lg font-bold text-ink">Поръчки</h3>
                     <span className="text-sm text-muted">Активни: {activeOrders.length}</span>
                   </div>
                   {/* Мобилен изглед: карти */}
@@ -1290,7 +1264,7 @@ export function LiveCrmApp() {
                     Общо поръчки: {crm.orders.length}
                   </div>
                 </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-5 lg:grid-cols-10">
+                <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-2 md:grid-cols-5 lg:grid-cols-10">
                   {statuses.map((status) => {
                     const columnOrders = crm.orders.filter((order) => order.status === status);
                     return (
@@ -1301,7 +1275,7 @@ export function LiveCrmApp() {
                           const id = event.dataTransfer.getData("text/plain");
                           if (id) moveOrder(id, status);
                         }}
-                        className={`rounded-xl border p-2 ${columnOrders.length ? "min-h-40" : "min-h-0"} ${statusColumnColors[status]}`}
+                        className={`self-start rounded-xl border p-2 ${statusColumnColors[status]}`}
                       >
                         <div className="mb-3 flex items-center justify-between">
                           <p className="text-sm font-bold text-ink">{statusLabels[status]}</p>
@@ -1850,14 +1824,6 @@ export function LiveCrmApp() {
                       <p>За AI анализ трябва да са добавени Cloudflare AI ключовете.</p>
                     </div>
                     <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                      <button
-                        type="button"
-                        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-ink px-4 py-2.5 text-sm font-semibold text-white"
-                      >
-                        {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-                        {theme === "dark" ? "Бяла тема" : "Черна тема"}
-                      </button>
                       <button
                         type="button"
                         onClick={async () => {
