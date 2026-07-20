@@ -113,3 +113,33 @@ textarea {
     box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
   }
 }
+
+/* Мобилна версия: по-едри букви и по-добра четимост */
+@media (max-width: 768px) {
+  html {
+    font-size: 17.5px;
+  }
+
+  body {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    min-height: 44px;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px !important; /* предотвратява zoom при фокус в iOS */
+  }
+}
+
+@media (max-width: 480px) {
+  html {
+    font-size: 18px;
+  }
+}

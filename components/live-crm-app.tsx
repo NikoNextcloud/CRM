@@ -3,18 +3,17 @@
 import { type DragEvent, type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   Activity,
+  Archive,
   BarChart3,
   Bell,
   CalendarDays,
   CheckCircle2,
   ClipboardList,
-  CloudUpload,
-  FileArchive,
-  FolderOpen,
   LayoutDashboard,
   Loader2,
   MessageSquareText,
   PanelLeft,
+  Pencil,
   Phone,
   Plus,
   Moon,
@@ -135,14 +134,15 @@ type OrderStatus =
   | "Ready"
   | "Shipped"
   | "Completed"
-  | "Cancelled";
+  | "Cancelled"
+  | "Archived";
 
 const navItems = [
   "Dashboard",
   "Clients",
   "Orders",
   "Calendar",
-  "Files",
+  "ArchiveView",
   "Settings"
 ] as const;
 
@@ -153,7 +153,7 @@ const navLabels = {
   Clients: "Клиенти",
   Orders: "Поръчки",
   Calendar: "Календар",
-  Files: "Файлове",
+  ArchiveView: "Архив",
   Settings: "Настройки"
 };
 
@@ -162,7 +162,7 @@ const navIcons = {
   Clients: Users,
   Orders: ClipboardList,
   Calendar: CalendarDays,
-  Files: FolderOpen,
+  ArchiveView: Archive,
   Settings
 };
 
@@ -178,7 +178,8 @@ const statuses: OrderStatus[] = [
   "Ready",
   "Shipped",
   "Completed",
-  "Cancelled"
+  "Cancelled",
+  "Archived"
 ];
 
 const statusColors: Record<OrderStatus, string> = {
@@ -190,7 +191,8 @@ const statusColors: Record<OrderStatus, string> = {
   Ready: "bg-teal-50 text-teal-700",
   Shipped: "bg-cyan-50 text-cyan-700",
   Completed: "bg-green-50 text-green-700",
-  Cancelled: "bg-rose-50 text-rose-700"
+  Cancelled: "bg-rose-50 text-rose-700",
+  Archived: "bg-stone-100 text-stone-700"
 };
 
 const statusColumnColors: Record<OrderStatus, string> = {
@@ -202,7 +204,8 @@ const statusColumnColors: Record<OrderStatus, string> = {
   Ready: "border-teal-300 bg-teal-50 shadow-[0_0_24px_rgba(13,148,136,0.18)]",
   Shipped: "border-cyan-300 bg-cyan-50 shadow-[0_0_24px_rgba(8,145,178,0.18)]",
   Completed: "border-green-300 bg-green-50 shadow-[0_0_24px_rgba(22,163,74,0.18)]",
-  Cancelled: "border-rose-300 bg-rose-50 shadow-[0_0_24px_rgba(225,29,72,0.18)]"
+  Cancelled: "border-rose-300 bg-rose-50 shadow-[0_0_24px_rgba(225,29,72,0.18)]",
+  Archived: "border-stone-300 bg-stone-50 shadow-[0_0_24px_rgba(120,113,108,0.18)]"
 };
 
 const statusCardColors: Record<OrderStatus, string> = {
@@ -214,7 +217,8 @@ const statusCardColors: Record<OrderStatus, string> = {
   Ready: "border-l-teal-500",
   Shipped: "border-l-cyan-500",
   Completed: "border-l-green-500",
-  Cancelled: "border-l-rose-500"
+  Cancelled: "border-l-rose-500",
+  Archived: "border-l-stone-500"
 };
 
 const statusLabels: Record<OrderStatus, string> = {
@@ -226,7 +230,8 @@ const statusLabels: Record<OrderStatus, string> = {
   Ready: "Готова",
   Shipped: "Изпратена",
   Completed: "Завършена",
-  Cancelled: "Отказана"
+  Cancelled: "Отказана",
+  Archived: "Архив"
 };
 
 const emptyCustomer = {
@@ -277,12 +282,6 @@ function formatLocalDateKey(date: Date) {
 function shortDate(value?: string | null) {
   if (!value) return "Няма дата";
   return new Intl.DateTimeFormat("bg-BG", { day: "2-digit", month: "short", year: "numeric" }).format(localDateFromValue(value));
-}
-
-function fileSize(bytes: number | null) {
-  if (!bytes) return "0 KB";
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function cleanPhone(value?: string | null) {
@@ -353,6 +352,7 @@ export function LiveCrmApp() {
   const [customerForm, setCustomerForm] = useState(emptyCustomer);
   const [editingCustomer, setEditingCustomer] = useState(false);
   const [orderForm, setOrderForm] = useState(emptyOrder);
+  const [editingOrderId, setEditingOrderId] = useState("");
   const [note, setNote] = useState("");
   const [editingNoteId, setEditingNoteId] = useState("");
   const [calendarForm, setCalendarForm] = useState({
@@ -394,10 +394,17 @@ export function LiveCrmApp() {
     );
   }, [crm.customers, search]);
 
+  const archivedOrders = useMemo(
+    () =>
+      crm.orders.filter((order) => ["Archived", "Completed", "Cancelled"].includes(order.status)),
+    [crm.orders]
+  );
+
   const filteredOrders = useMemo(() => {
+    const visibleOrders = crm.orders.filter((order) => order.status !== "Archived");
     const query = search.toLowerCase().trim();
-    if (!query) return crm.orders;
-    return crm.orders.filter((order) =>
+    if (!query) return visibleOrders;
+    return visibleOrders.filter((order) =>
       [order.order_number, order.product, order.description, customerName(crm.customers, order.customer_id)]
         .filter(Boolean)
         .join(" ")
@@ -408,7 +415,7 @@ export function LiveCrmApp() {
 
   const totalRevenue = crm.orders.reduce((sum, order) => sum + money(order.price), 0);
   const totalProfit = crm.orders.reduce((sum, order) => sum + money(order.price) - money(order.cost), 0);
-  const activeOrders = crm.orders.filter((order) => !["Completed", "Cancelled"].includes(order.status));
+  const activeOrders = crm.orders.filter((order) => !["Completed", "Cancelled", "Archived"].includes(order.status));
   const completedOrders = crm.orders.filter((order) => order.status === "Completed");
   const ordersToday = crm.orders.filter((order) => new Date(order.created_at).toDateString() === new Date().toDateString());
   const bestCustomer = useMemo(() => {
@@ -558,27 +565,46 @@ export function LiveCrmApp() {
     }
 
     const productName = orderForm.product.trim() || "Обща поръчка";
+    const payload = {
+      ...orderForm,
+      product: productName,
+      description: orderForm.description.trim(),
+      quantity: Number(orderForm.quantity) || 1,
+      price: Number(orderForm.price) || 0,
+      cost: Number(orderForm.cost) || 0,
+      deadline_at: orderForm.deadline_at || null
+    };
 
-    const ok = await crmAction(
-      {
-        action: "createOrder",
-        payload: {
-          ...orderForm,
-          product: productName,
-          description: orderForm.description.trim(),
-          quantity: Number(orderForm.quantity) || 1,
-          price: Number(orderForm.price) || 0,
-          cost: Number(orderForm.cost) || 0,
-          deadline_at: orderForm.deadline_at || null
-        }
-      },
-      "Поръчката е добавена."
-    );
+    const ok = editingOrderId
+      ? await crmAction({ action: "updateOrder", id: editingOrderId, payload }, "Поръчката е обновена.")
+      : await crmAction({ action: "createOrder", payload }, "Поръчката е добавена.");
 
     if (ok) {
       setOrderForm(emptyOrder);
+      setEditingOrderId("");
       setActiveView("Orders");
     }
+  }
+
+  function startEditOrder(order: OrderRow) {
+    setEditingOrderId(order.id);
+    setOrderForm({
+      customer_id: order.customer_id,
+      product: order.product || "",
+      description: order.description || "",
+      quantity: order.quantity || 1,
+      price: money(order.price),
+      cost: money(order.cost),
+      deadline_at: order.deadline_at ? order.deadline_at.slice(0, 10) : "",
+      status: order.status
+    });
+    setActiveView("Orders");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEditOrder() {
+    setEditingOrderId("");
+    setOrderForm(emptyOrder);
   }
 
   async function deleteOrder(orderId: string) {
@@ -679,37 +705,6 @@ export function LiveCrmApp() {
     if (ok) setReminderForm({ order_id: "", due_at: "", description: "" });
   }
 
-  async function uploadFile(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const fileInput = form.elements.namedItem("file") as HTMLInputElement;
-    const orderInput = form.elements.namedItem("order_id") as HTMLSelectElement;
-    const file = fileInput.files?.[0];
-    if (!selectedCustomer || !file || !orderInput.value) {
-      setMessage("Първо избери клиент, поръчка и файл.");
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("customer_id", selectedCustomer.id);
-    formData.append("order_id", orderInput.value);
-
-    setSaving(true);
-    try {
-      const response = await fetch("/api/files", { method: "POST", body: formData });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Качването не беше успешно.");
-      setMessage("Файлът е качен в Supabase Storage.");
-      form.reset();
-      await loadCrm();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Качването не беше успешно.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function runAiAnalysis() {
     setAiLoading(true);
     setAiText("");
@@ -734,18 +729,6 @@ export function LiveCrmApp() {
       setAiText(error instanceof Error ? error.message : "AI анализът не беше успешен.");
     } finally {
       setAiLoading(false);
-    }
-  }
-
-  async function openFile(fileId: string) {
-    setMessage("");
-    try {
-      const response = await fetch(`/api/files?id=${encodeURIComponent(fileId)}`);
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Не можа да се създаде линк към файла.");
-      window.open(data.url, "_blank", "noopener,noreferrer");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Файлът не можа да се отвори.");
     }
   }
 
@@ -781,13 +764,11 @@ export function LiveCrmApp() {
       icon: TrendingUp,
       tone: "text-violet"
     },
-    { label: "Файлове", value: crm.files.length.toString(), icon: FileArchive, tone: "text-coral" },
     { label: "Най-добър клиент", value: bestCustomer?.customer.company || "Няма данни", icon: Users, tone: "text-accent" }
   ];
 
   const selectedRevenue = selectedCustomerOrders.reduce((sum, order) => sum + money(order.price), 0);
   const selectedProfit = selectedCustomerOrders.reduce((sum, order) => sum + money(order.price) - money(order.cost), 0);
-  const selectedFiles = crm.files.filter((file) => file.customer_id === selectedCustomer?.id);
   const selectedTimeline = crm.timeline.filter((event) => event.customer_id === selectedCustomer?.id);
   const selectedNotes = crm.notes.filter((item) => item.customer_id === selectedCustomer?.id);
   const calendarDays = buildCalendarDays();
@@ -800,8 +781,7 @@ export function LiveCrmApp() {
   const showCustomerList = activeView === "Dashboard" || activeView === "Clients";
   const showOrderList = activeView === "Dashboard" || activeView === "Orders";
   const showKanban = activeView === "Dashboard" || activeView === "Orders";
-  const showCustomerProfile = activeView === "Dashboard" || activeView === "Clients" || activeView === "Files";
-  const showFileUpload = activeView === "Dashboard" || activeView === "Files" || activeView === "Clients";
+  const showCustomerProfile = activeView === "Dashboard" || activeView === "Clients";
   const showDeadlines = activeView === "Dashboard";
 
   function moduleDragProps(id: ModuleId) {
@@ -883,7 +863,7 @@ export function LiveCrmApp() {
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
                     className="w-full bg-transparent outline-none placeholder:text-slate-400"
-                    placeholder="Търси клиенти, поръчки, файлове..."
+                    placeholder="Търси клиенти, поръчки..."
                   />
                 </label>
                 <button
@@ -984,7 +964,7 @@ export function LiveCrmApp() {
                   </form>
                 </FormCard>}
 
-                {showOrderForm && <FormCard title="Добави поръчка" icon={<Plus size={19} />}>
+                {showOrderForm && <FormCard title={editingOrderId ? "Редакция на поръчка" : "Добави поръчка"} icon={editingOrderId ? <Pencil size={19} /> : <Plus size={19} />}>
                   <form onSubmit={saveOrder} className="grid gap-3 md:grid-cols-2">
                     <label className="md:col-span-2">
                       <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Клиент</span>
@@ -1026,10 +1006,17 @@ export function LiveCrmApp() {
                         className="mt-1 min-h-20 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
                       />
                     </label>
-                    <button className="inline-flex items-center gap-2 rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-white md:col-span-2" disabled={saving}>
-                      {saving ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-                      Добави поръчка
-                    </button>
+                    <div className="flex gap-2 md:col-span-2">
+                      <button className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-white" disabled={saving}>
+                        {saving ? <Loader2 size={16} className="animate-spin" /> : editingOrderId ? <Save size={16} /> : <Plus size={16} />}
+                        {editingOrderId ? "Запази промените" : "Добави поръчка"}
+                      </button>
+                      {editingOrderId && (
+                        <button type="button" onClick={cancelEditOrder} className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-ink">
+                          Отказ
+                        </button>
+                      )}
+                    </div>
                   </form>
                 </FormCard>}
 
@@ -1150,6 +1137,14 @@ export function LiveCrmApp() {
                             <td className="px-4 py-3 text-right">
                               <button
                                 type="button"
+                                onClick={() => startEditOrder(order)}
+                                className="mr-2 inline-flex items-center justify-center rounded-lg border border-line bg-white p-2 text-slate-600 transition hover:bg-soft hover:text-ink"
+                                title="Редактирай поръчката"
+                              >
+                                <Pencil size={16} />
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => {
                                   setReminderForm({ order_id: order.id, due_at: "", description: "" });
                                   setActiveView("Orders");
@@ -1179,15 +1174,15 @@ export function LiveCrmApp() {
               {showKanban && <section {...moduleDragProps("kanban")} className="mt-5 premium-card rounded-2xl p-5">
                 <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <h3 className="text-lg font-bold text-ink">Kanban на живо</h3>
-                    <p className="text-sm text-muted">Премествай поръчките между колоните. Статусът се записва в Supabase.</p>
+                    <h3 className="text-lg font-bold text-ink">Поръчки</h3>
+                    <p className="text-sm text-muted">Премествай поръчките между колоните или ги редактирай с молива. Колоната „Архив" изпраща поръчката в таб Архив.</p>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-muted">
                     <Bell size={16} />
                     Общо поръчки: {crm.orders.length}
                   </div>
                 </div>
-                <div className="grid gap-3 overflow-x-auto md:grid-cols-3 xl:grid-cols-9">
+                <div className="flex gap-3 overflow-x-auto pb-2">
                   {statuses.map((status) => {
                     const columnOrders = crm.orders.filter((order) => order.status === status);
                     return (
@@ -1198,7 +1193,7 @@ export function LiveCrmApp() {
                           const id = event.dataTransfer.getData("text/plain");
                           if (id) moveOrder(id, status);
                         }}
-                        className={`min-h-40 rounded-xl border p-3 ${statusColumnColors[status]}`}
+                        className={`min-h-40 w-56 shrink-0 rounded-xl border p-3 sm:w-64 ${statusColumnColors[status]}`}
                       >
                         <div className="mb-3 flex items-center justify-between">
                           <p className="text-sm font-bold text-ink">{statusLabels[status]}</p>
@@ -1208,7 +1203,7 @@ export function LiveCrmApp() {
                         </div>
                         <div className="space-y-2">
                           {columnOrders.map((order) => (
-                            <button
+                            <div
                               key={order.id}
                               draggable
                               onDragStart={(event) => {
@@ -1217,9 +1212,20 @@ export function LiveCrmApp() {
                               }}
                               className={`w-full cursor-grab rounded-lg border-l-4 bg-white p-3 text-left shadow-subtle active:cursor-grabbing ${statusCardColors[order.status]}`}
                             >
-                              <p className="text-sm font-semibold text-ink">{order.product || order.description || order.order_number}</p>
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-sm font-semibold text-ink">{order.product || order.description || order.order_number}</p>
+                                <button
+                                  type="button"
+                                  onClick={() => startEditOrder(order)}
+                                  className="shrink-0 rounded-lg border border-line bg-white p-1.5 text-slate-500 transition hover:bg-soft hover:text-ink"
+                                  title="Редактирай поръчката"
+                                >
+                                  <Pencil size={13} />
+                                </button>
+                              </div>
+                              <p className="mt-1 text-xs text-muted">{customerName(crm.customers, order.customer_id)}</p>
                               <p className="mt-1 text-xs text-muted">{shortDate(order.deadline_at)}</p>
-                            </button>
+                            </div>
                           ))}
                         </div>
                       </div>
@@ -1230,7 +1236,7 @@ export function LiveCrmApp() {
 
               {activeView === "Orders" && (
                 <section {...moduleDragProps("ordersForm")} className="mt-5 grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
-                  <FormCard title="Добави поръчка" icon={<Plus size={19} />}>
+                  <FormCard title={editingOrderId ? "Редакция на поръчка" : "Добави поръчка"} icon={editingOrderId ? <Pencil size={19} /> : <Plus size={19} />}>
                     <form onSubmit={saveOrder} className="grid gap-3 md:grid-cols-2">
                       <label className="md:col-span-2">
                         <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Клиент</span>
@@ -1272,10 +1278,17 @@ export function LiveCrmApp() {
                           className="mt-1 min-h-20 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
                         />
                       </label>
-                      <button className="inline-flex items-center gap-2 rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-white md:col-span-2" disabled={saving}>
-                        {saving ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-                        Добави поръчка
-                      </button>
+                      <div className="flex gap-2 md:col-span-2">
+                        <button className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-white" disabled={saving}>
+                          {saving ? <Loader2 size={16} className="animate-spin" /> : editingOrderId ? <Save size={16} /> : <Plus size={16} />}
+                          {editingOrderId ? "Запази промените" : "Добави поръчка"}
+                        </button>
+                        {editingOrderId && (
+                          <button type="button" onClick={cancelEditOrder} className="rounded-xl border border-line px-4 py-2 text-sm font-semibold text-ink">
+                            Отказ
+                          </button>
+                        )}
+                      </div>
                     </form>
                   </FormCard>
 
@@ -1326,13 +1339,77 @@ export function LiveCrmApp() {
                 </section>
               )}
 
+              {activeView === "ArchiveView" && (
+                <section className="mt-5 premium-card rounded-2xl p-5">
+                  <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <h3 className="text-lg font-bold text-ink">Архив на поръчките</h3>
+                      <p className="text-sm text-muted">Тук се пазят всички завършени, отказани и архивирани поръчки. Можеш да върнеш поръчка обратно, като смениш статуса ѝ.</p>
+                    </div>
+                    <span className="rounded-full bg-stone-100 px-3 py-1 text-sm font-semibold text-stone-700">
+                      Общо в архива: {archivedOrders.length}
+                    </span>
+                  </div>
+                  {archivedOrders.length ? (
+                    <div className="space-y-3">
+                      {archivedOrders
+                        .slice()
+                        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+                        .map((order) => (
+                          <div key={order.id} className="flex flex-col gap-3 rounded-xl border border-line bg-white p-4 shadow-subtle sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                              <p className="font-bold text-ink">{order.order_number}</p>
+                              <p className="truncate text-sm text-slate-700">{order.product || order.description || "Обща поръчка"}</p>
+                              <p className="mt-1 text-sm text-muted">
+                                {customerName(crm.customers, order.customer_id)} · Създадена: {shortDate(order.created_at)}
+                                {order.deadline_at ? ` · Срок: ${shortDate(order.deadline_at)}` : ""}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-bold text-ink">{currency(money(order.price))}</span>
+                              <select
+                                value={order.status}
+                                onChange={(event) => moveOrder(order.id, event.target.value as OrderStatus)}
+                                className={`rounded-full px-2.5 py-1.5 text-xs font-semibold outline-none ${statusColors[order.status]}`}
+                                title="Смени статуса, за да върнеш поръчката"
+                              >
+                                {statuses.map((status) => (
+                                  <option key={status} value={status}>{statusLabels[status]}</option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => startEditOrder(order)}
+                                className="inline-flex items-center justify-center rounded-lg border border-line bg-white p-2 text-slate-600 transition hover:bg-soft hover:text-ink"
+                                title="Редактирай поръчката"
+                              >
+                                <Pencil size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteOrder(order.id)}
+                                className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 p-2 text-rose-700 transition hover:bg-rose-100"
+                                title="Изтрий завинаги"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  ) : (
+                    <p className="rounded-xl bg-soft p-4 text-sm text-muted">Архивът е празен. Когато завършиш или архивираш поръчка, тя ще се появи тук.</p>
+                  )}
+                </section>
+              )}
+
               {activeView === "Calendar" && (
                 <section {...moduleDragProps("calendar")} className="mt-5 grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
                   <article className="premium-card rounded-2xl p-5">
                     <div className="mb-5 flex items-center justify-between">
                       <div>
                         <h3 className="text-lg font-bold text-ink">Календар на сроковете</h3>
-                        <p className="text-sm text-muted">Червените дни са срокове за изработка или избрани периоди.</p>
+                        <p className="text-sm text-muted">Зеленият ден е днешната дата. Червените дни са срокове за изработка или избрани периоди.</p>
                       </div>
                       <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
                         {new Intl.DateTimeFormat("bg-BG", { month: "long", year: "numeric" }).format(new Date())}
@@ -1345,6 +1422,7 @@ export function LiveCrmApp() {
                     </div>
                     <div className="mt-3 grid grid-cols-7 gap-2">
                       {calendarDays.map((day) => {
+                        const isToday = day.key === formatLocalDateKey(new Date());
                         const orderForDay = calendarOrders.find((order) => dateKey(order.deadline_at || "") === day.key);
                         const savedNote = crm.calendar_notes.find((item) => isDateInRange(day.key, item.start_date, item.end_date));
                         const selectedRange = isDateInRange(day.key, calendarForm.start_date, calendarForm.end_date);
@@ -1353,16 +1431,19 @@ export function LiveCrmApp() {
                           <div
                             key={day.key}
                             className={`min-h-28 rounded-xl border p-2 text-left transition ${
-                              isDeadline
-                                ? "border-rose-200 bg-rose-50 text-rose-950"
-                                : day.inMonth
-                                  ? "border-line bg-white"
-                                  : "border-slate-100 bg-slate-50 text-slate-400"
+                              isToday
+                                ? "border-green-500 bg-green-100 text-green-950 ring-2 ring-green-500"
+                                : isDeadline
+                                  ? "border-rose-200 bg-rose-50 text-rose-950"
+                                  : day.inMonth
+                                    ? "border-line bg-white"
+                                    : "border-slate-100 bg-slate-50 text-slate-400"
                             }`}
                           >
                             <div className="mb-2 flex items-center justify-between">
-                              <span className="text-sm font-bold">{day.label}</span>
-                              {isDeadline && <span className="h-2 w-2 rounded-full bg-rose-600" />}
+                              <span className={`text-sm font-bold ${isToday ? "grid h-7 w-7 place-items-center rounded-full bg-green-600 text-white" : ""}`}>{day.label}</span>
+                              {isToday && <span className="rounded-full bg-green-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Днес</span>}
+                              {!isToday && isDeadline && <span className="h-2 w-2 rounded-full bg-rose-600" />}
                             </div>
                             {orderForDay && (
                               <p className="line-clamp-2 text-xs font-semibold">
@@ -1496,7 +1577,7 @@ export function LiveCrmApp() {
                 </section>
               )}
 
-              {(showCustomerProfile || showFileUpload || showDeadlines) && <section {...moduleDragProps("profile")} className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+              {(showCustomerProfile || showDeadlines) && <section {...moduleDragProps("profile")} className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
                 {showCustomerProfile && <article className="premium-card rounded-2xl p-5">
                   <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
@@ -1625,50 +1706,7 @@ export function LiveCrmApp() {
                   )}
                 </article>}
 
-                {(showFileUpload || showDeadlines) && <aside className="space-y-5">
-                  {showFileUpload && <article className="premium-card rounded-2xl p-5">
-                    <div className="mb-4 flex items-center gap-2">
-                      <CloudUpload size={19} className="text-coral" />
-                      <h3 className="text-lg font-bold text-ink">Качване на файлове</h3>
-                    </div>
-                    <form onSubmit={uploadFile} className="space-y-3">
-                      <select name="order_id" className="w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent">
-                        <option value="">Избери поръчка</option>
-                        {selectedCustomerOrders.map((order) => (
-                          <option key={order.id} value={order.id}>
-                            {order.order_number} - {order.product}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        name="file"
-                        type="file"
-                        className="w-full rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
-                      />
-                      <button className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-white" disabled={saving}>
-                        <CloudUpload size={16} />
-                        Качи в Supabase
-                      </button>
-                    </form>
-                    <div className="mt-4 space-y-2">
-                      {selectedFiles.map((file) => (
-                        <div key={file.id} className="flex items-center justify-between rounded-lg bg-soft p-3">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <FileArchive size={17} className="text-coral" />
-                            <span className="truncate text-sm font-semibold text-ink">{file.file_name}</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => openFile(file.id)}
-                            className="shrink-0 rounded-lg border border-line bg-white px-2 py-1 text-xs font-semibold text-ink hover:bg-soft"
-                          >
-                            {fileSize(file.size_bytes)}
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </article>}
-
+                {showDeadlines && <aside className="space-y-5">
                   {showDeadlines && <article className="premium-card rounded-2xl p-5">
                     <div className="mb-4 flex items-center gap-2">
                       <Phone size={19} className="text-teal" />
@@ -1753,21 +1791,24 @@ export function LiveCrmApp() {
           )}
         </section>
       </div>
-      <nav className="fixed inset-x-3 bottom-3 z-50 grid grid-cols-7 gap-1 rounded-2xl border border-line bg-white/95 p-2 shadow-premium backdrop-blur lg:hidden">
+      <nav className="fixed inset-x-2 bottom-2 z-50 grid grid-cols-6 gap-1 rounded-2xl border border-line bg-white/95 p-2 shadow-premium backdrop-blur lg:hidden">
         {navItems.map((item) => {
           const Icon = navIcons[item];
           return (
             <button
               key={item}
               type="button"
-              onClick={() => setActiveView(item)}
-              className={`grid min-h-12 place-items-center rounded-xl text-xs font-semibold transition ${
+              onClick={() => {
+                setActiveView(item);
+                window.scrollTo({ top: 0 });
+              }}
+              className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-bold leading-none transition ${
                 item === activeView ? "bg-ink text-white" : "text-slate-600 hover:bg-soft hover:text-ink"
               }`}
               title={navLabels[item]}
             >
-              <Icon size={18} />
-              <span className="sr-only">{navLabels[item]}</span>
+              <Icon size={20} />
+              <span>{navLabels[item]}</span>
             </button>
           );
         })}
