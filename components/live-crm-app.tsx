@@ -22,7 +22,6 @@ import {
   RefreshCw,
   Save,
   Search,
-  Send,
   Settings,
   Sparkles,
   Trash2,
@@ -905,22 +904,8 @@ export function LiveCrmApp() {
     win.document.close();
   }
 
-  function shareOrderViber(order: OrderRow) {
+  async function shareShippedViber(order: OrderRow) {
     const customer = crm.customers.find((item) => item.id === order.customer_id);
-    const name = customer ? (customer.first_name || customer.company || "клиент") : "клиент";
-    const lines = [
-      `Здравейте, ${name}!`,
-      `Поръчката Ви ${order.order_number} – ${order.product || "поръчка"} е готова за получаване. ✅`
-    ];
-    if (order.tracking_number) {
-      lines.push(`Номер на товарителница: ${order.tracking_number}`);
-    }
-    lines.push("Благодарим Ви, че избрахте нас! – Винил Печат");
-    const url = `viber://forward?text=${encodeURIComponent(lines.join("\n"))}`;
-    window.location.href = url;
-  }
-
-  function shareShippedViber(order: OrderRow) {
     const lines = [
       "📦 Здравейте! Вашата пратка беше изпратена успешно.",
       "Очаквайте доставка в рамките на срока, посочен от куриерската фирма."
@@ -929,8 +914,22 @@ export function LiveCrmApp() {
       lines.push(`Номер на товарителница: ${order.tracking_number}`);
     }
     lines.push("Благодарим Ви за доверието! Ако имате въпроси, сме на разположение.");
-    const url = `viber://forward?text=${encodeURIComponent(lines.join("\n"))}`;
-    window.location.href = url;
+    const text = lines.join("\n");
+
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // clipboard може да е недостъпен – продължаваме без копиране
+    }
+
+    const number = cleanPhone(customer?.viber || customer?.phone);
+    if (number) {
+      setMessage(`Съобщението е копирано. Отваря се чатът с ${customer?.first_name || "клиента"} – просто го постави (Paste) и изпрати.`);
+      window.location.href = `viber://chat?number=${encodeURIComponent(number)}`;
+    } else {
+      setMessage("Клиентът няма записан Viber/телефонен номер – избери го ръчно във Viber. Съобщението е копирано.");
+      window.location.href = `viber://forward?text=${encodeURIComponent(text)}`;
+    }
   }
 
   async function deleteOrder(orderId: string) {
@@ -1647,17 +1646,10 @@ export function LiveCrmApp() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => shareOrderViber(order)}
-                            className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 text-sm font-semibold text-violet-700"
-                          >
-                            <Send size={16} /> Готова
-                          </button>
-                          <button
-                            type="button"
                             onClick={() => shareShippedViber(order)}
-                            className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 text-sm font-semibold text-violet-700"
+                            className="col-span-2 flex h-11 items-center justify-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 text-sm font-semibold text-violet-700"
                           >
-                            <Package size={16} /> Изпратена
+                            <Package size={16} /> Изпрати по Viber
                           </button>
                         </div>
                         <div className="mt-3 flex items-center justify-between gap-2">
@@ -1752,7 +1744,7 @@ export function LiveCrmApp() {
                               )}
                             </td>
                             <td className="px-4 py-3">
-                              <div className="ml-auto grid w-fit grid-cols-4 gap-1.5">
+                              <div className="ml-auto grid w-fit grid-cols-3 gap-1.5">
                                 <button
                                   type="button"
                                   onClick={() => startEditOrder(order)}
@@ -1790,21 +1782,12 @@ export function LiveCrmApp() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => shareOrderViber(order)}
-                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 text-violet-700 transition hover:bg-violet-100"
-                                  title="Viber: Поръчката е готова за получаване"
-                                >
-                                  <Send size={16} />
-                                </button>
-                                <button
-                                  type="button"
                                   onClick={() => shareShippedViber(order)}
                                   className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 text-violet-700 transition hover:bg-violet-100"
                                   title="Viber: Пратката е изпратена"
                                 >
                                   <Package size={16} />
                                 </button>
-                                <span />
                                 <button
                                   type="button"
                                   onClick={() => deleteOrder(order.id)}
@@ -2108,14 +2091,6 @@ export function LiveCrmApp() {
                                 title="PDF оферта"
                               >
                                 <FileText size={16} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => shareOrderViber(order)}
-                                className="inline-flex items-center justify-center rounded-lg border border-violet-200 bg-violet-50 p-2 text-violet-700 transition hover:bg-violet-100"
-                                title="Viber: Поръчката е готова"
-                              >
-                                <Send size={16} />
                               </button>
                               <button
                                 type="button"
