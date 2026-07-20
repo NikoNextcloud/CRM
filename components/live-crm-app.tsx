@@ -2,12 +2,10 @@
 
 import { type DragEvent, type FormEvent, useEffect, useMemo, useState } from "react";
 import {
-  Activity,
   Archive,
   BarChart3,
   Bell,
   CalendarDays,
-  CheckCircle2,
   ClipboardList,
   LayoutDashboard,
   Loader2,
@@ -417,18 +415,7 @@ export function LiveCrmApp() {
   const totalRevenue = crm.orders.reduce((sum, order) => sum + money(order.price), 0);
   const totalProfit = crm.orders.reduce((sum, order) => sum + money(order.price) - money(order.cost), 0);
   const activeOrders = crm.orders.filter((order) => !["Completed", "Cancelled", "Archived"].includes(order.status));
-  const completedOrders = crm.orders.filter((order) => order.status === "Completed");
   const ordersToday = crm.orders.filter((order) => new Date(order.created_at).toDateString() === new Date().toDateString());
-  const bestCustomer = useMemo(() => {
-    return crm.customers
-      .map((customer) => ({
-        customer,
-        revenue: crm.orders
-          .filter((order) => order.customer_id === customer.id)
-          .reduce((sum, order) => sum + money(order.price), 0)
-      }))
-      .sort((a, b) => b.revenue - a.revenue)[0];
-  }, [crm.customers, crm.orders]);
 
   useEffect(() => {
     loadCrm();
@@ -755,8 +742,6 @@ export function LiveCrmApp() {
     { label: "Общо клиенти", value: crm.customers.length.toString(), icon: Users, tone: "text-accent" },
     { label: "Общо поръчки", value: crm.orders.length.toString(), icon: ClipboardList, tone: "text-violet" },
     { label: "Поръчки днес", value: ordersToday.length.toString(), icon: CalendarDays, tone: "text-coral" },
-    { label: "Активни поръчки", value: activeOrders.length.toString(), icon: Activity, tone: "text-teal" },
-    { label: "Завършени поръчки", value: completedOrders.length.toString(), icon: CheckCircle2, tone: "text-emerald-600" },
     { label: "Общ оборот", value: currency(totalRevenue), icon: BarChart3, tone: "text-ink" },
     { label: "Обща печалба", value: currency(totalProfit), icon: Sparkles, tone: "text-teal" },
     {
@@ -764,8 +749,7 @@ export function LiveCrmApp() {
       value: crm.orders.length ? currency(totalRevenue / crm.orders.length) : currency(0),
       icon: TrendingUp,
       tone: "text-violet"
-    },
-    { label: "Най-добър клиент", value: bestCustomer?.customer.company || "Няма данни", icon: Users, tone: "text-accent" }
+    }
   ];
 
   const selectedRevenue = selectedCustomerOrders.reduce((sum, order) => sum + money(order.price), 0);
@@ -1306,7 +1290,7 @@ export function LiveCrmApp() {
                     Общо поръчки: {crm.orders.length}
                   </div>
                 </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-5 lg:grid-cols-10">
                   {statuses.map((status) => {
                     const columnOrders = crm.orders.filter((order) => order.status === status);
                     return (
@@ -1317,7 +1301,7 @@ export function LiveCrmApp() {
                           const id = event.dataTransfer.getData("text/plain");
                           if (id) moveOrder(id, status);
                         }}
-                        className={`rounded-xl border p-3 ${columnOrders.length ? "min-h-40" : "min-h-0"} ${statusColumnColors[status]}`}
+                        className={`rounded-xl border p-2 ${columnOrders.length ? "min-h-40" : "min-h-0"} ${statusColumnColors[status]}`}
                       >
                         <div className="mb-3 flex items-center justify-between">
                           <p className="text-sm font-bold text-ink">{statusLabels[status]}</p>
