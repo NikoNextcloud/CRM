@@ -345,6 +345,7 @@ export function LiveCrmApp() {
   const [message, setMessage] = useState("");
   const [search, setSearch] = useState("");
   const [activeView, setActiveView] = useState<AppView>("Dashboard");
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [moduleOrder, setModuleOrder] = useState<ModuleId[]>([...defaultModuleOrder]);
   const [draggedModule, setDraggedModule] = useState<ModuleId | null>(null);
@@ -850,7 +851,74 @@ export function LiveCrmApp() {
         </aside>
 
         <section className="flex-1 px-4 py-5 sm:px-6 lg:px-8">
-          <header className="mb-5 rounded-2xl border border-line bg-white p-4 shadow-subtle">
+          {/* Мобилен горен бар */}
+          <header className="sticky top-2 z-40 mb-4 rounded-2xl border border-line bg-white/95 p-3 shadow-subtle backdrop-blur lg:hidden">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-ink text-white">
+                  <PanelLeft size={17} />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-base font-bold leading-tight text-ink">{navLabels[activeView]}</p>
+                  <p className="truncate text-[11px] font-semibold uppercase tracking-wide text-muted">AI CRM на живо</p>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setMobileSearchOpen((open) => !open)}
+                  className={`grid h-10 w-10 place-items-center rounded-xl border border-line ${mobileSearchOpen ? "bg-ink text-white" : "text-ink"}`}
+                  title="Търсене"
+                >
+                  <Search size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                  className="grid h-10 w-10 place-items-center rounded-xl border border-line text-ink"
+                  title="Смени темата"
+                >
+                  {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={loadCrm}
+                  className="grid h-10 w-10 place-items-center rounded-xl border border-line text-ink"
+                  title="Обнови"
+                >
+                  <RefreshCw size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={runAiAnalysis}
+                  className="grid h-10 w-10 place-items-center rounded-xl bg-ink text-white"
+                  title="AI анализ"
+                >
+                  {aiLoading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+                </button>
+              </div>
+            </div>
+            {mobileSearchOpen && (
+              <label className="mt-3 flex items-center gap-2 rounded-xl border border-line bg-soft px-3 py-2.5 text-base text-muted">
+                <Search size={18} />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  className="w-full bg-transparent outline-none placeholder:text-slate-400"
+                  placeholder="Търси клиенти, поръчки..."
+                  autoFocus
+                />
+              </label>
+            )}
+            {message && (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-medium text-amber-800">
+                {message}
+              </div>
+            )}
+          </header>
+
+          {/* Десктоп хедър */}
+          <header className="mb-5 hidden rounded-2xl border border-line bg-white p-4 shadow-subtle lg:block">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.18em] text-accent">Табло на собственика</p>
@@ -907,16 +975,16 @@ export function LiveCrmApp() {
             </div>
           ) : (
             <div className="flex flex-col">
-              {showStats && <section {...moduleDragProps("stats")} className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              {showStats && <section {...moduleDragProps("stats")} className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-5">
                 {statCards.map((stat) => {
                   const Icon = stat.icon;
                   return (
-                    <article key={stat.label} className="premium-card rounded-2xl p-4">
-                      <div className="mb-4 flex items-center justify-between">
-                        <span className="text-sm font-medium text-muted">{stat.label}</span>
-                        <Icon size={18} className={stat.tone} />
+                    <article key={stat.label} className="premium-card rounded-2xl p-3 sm:p-4">
+                      <div className="mb-2 flex items-center justify-between sm:mb-4">
+                        <span className="text-xs font-medium text-muted sm:text-sm">{stat.label}</span>
+                        <Icon size={18} className={`shrink-0 ${stat.tone}`} />
                       </div>
-                      <strong className="block truncate text-2xl font-bold text-ink">{stat.value}</strong>
+                      <strong className="block truncate text-lg font-bold text-ink sm:text-2xl">{stat.value}</strong>
                     </article>
                   );
                 })}
@@ -1103,7 +1171,63 @@ export function LiveCrmApp() {
                     <h3 className="text-lg font-bold text-ink">Поръчки на живо</h3>
                     <span className="text-sm text-muted">Активни: {activeOrders.length}</span>
                   </div>
-                  <div className="overflow-x-auto rounded-xl border border-line">
+                  {/* Мобилен изглед: карти */}
+                  <div className="space-y-3 md:hidden">
+                    {filteredOrders.map((order) => (
+                      <div key={order.id} className="rounded-xl border border-line bg-white p-4 shadow-subtle">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-bold text-ink">{order.order_number}</p>
+                            <p className="truncate text-sm text-slate-700">{order.product || order.description || "Обща поръчка"}</p>
+                            <p className="mt-0.5 truncate text-sm text-muted">{customerName(crm.customers, order.customer_id)}</p>
+                          </div>
+                          <span className="shrink-0 text-base font-bold text-ink">{currency(money(order.price))}</span>
+                        </div>
+                        <div className="mt-3 flex items-center justify-between gap-2">
+                          <select
+                            value={order.status}
+                            onChange={(event) => moveOrder(order.id, event.target.value as OrderStatus)}
+                            className={`min-w-0 flex-1 rounded-xl px-3 py-2 text-sm font-semibold outline-none ${statusColors[order.status]}`}
+                          >
+                            {statuses.map((status) => (
+                              <option key={status} value={status}>{statusLabels[status]}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => startEditOrder(order)}
+                            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-line bg-white text-slate-600"
+                            title="Редактирай"
+                          >
+                            <Pencil size={17} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReminderForm({ order_id: order.id, due_at: "", description: "" });
+                              setActiveView("Orders");
+                            }}
+                            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-amber-200 bg-amber-50 text-amber-700"
+                            title="Напомняне"
+                          >
+                            <Bell size={17} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteOrder(order.id)}
+                            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-rose-200 bg-rose-50 text-rose-700"
+                            title="Изтрий"
+                          >
+                            <Trash2 size={17} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {!filteredOrders.length && <p className="rounded-xl bg-soft p-4 text-sm text-muted">Няма поръчки.</p>}
+                  </div>
+
+                  {/* Десктоп изглед: таблица */}
+                  <div className="hidden overflow-x-auto rounded-xl border border-line md:block">
                     <table className="w-full min-w-[760px] border-collapse text-left text-sm">
                       <thead className="bg-soft text-xs uppercase tracking-[0.12em] text-muted">
                         <tr>
@@ -1182,7 +1306,7 @@ export function LiveCrmApp() {
                     Общо поръчки: {crm.orders.length}
                   </div>
                 </div>
-                <div className="flex gap-3 overflow-x-auto pb-2">
+                <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 lg:snap-none">
                   {statuses.map((status) => {
                     const columnOrders = crm.orders.filter((order) => order.status === status);
                     return (
@@ -1193,7 +1317,7 @@ export function LiveCrmApp() {
                           const id = event.dataTransfer.getData("text/plain");
                           if (id) moveOrder(id, status);
                         }}
-                        className={`min-h-40 w-56 shrink-0 rounded-xl border p-3 sm:w-64 ${statusColumnColors[status]}`}
+                        className={`min-h-40 w-[78vw] max-w-64 shrink-0 snap-start rounded-xl border p-3 sm:w-64 ${statusColumnColors[status]}`}
                       >
                         <div className="mb-3 flex items-center justify-between">
                           <p className="text-sm font-bold text-ink">{statusLabels[status]}</p>
@@ -1415,12 +1539,12 @@ export function LiveCrmApp() {
                         {new Intl.DateTimeFormat("bg-BG", { month: "long", year: "numeric" }).format(new Date())}
                       </span>
                     </div>
-                    <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold uppercase tracking-[0.12em] text-muted">
+                    <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold uppercase tracking-[0.12em] text-muted sm:gap-2">
                       {["Пон", "Вто", "Сря", "Чет", "Пет", "Съб", "Нед"].map((day) => (
                         <span key={day}>{day}</span>
                       ))}
                     </div>
-                    <div className="mt-3 grid grid-cols-7 gap-2">
+                    <div className="mt-3 grid grid-cols-7 gap-1 sm:gap-2">
                       {calendarDays.map((day) => {
                         const isToday = day.key === formatLocalDateKey(new Date());
                         const orderForDay = calendarOrders.find((order) => dateKey(order.deadline_at || "") === day.key);
@@ -1430,7 +1554,7 @@ export function LiveCrmApp() {
                         return (
                           <div
                             key={day.key}
-                            className={`min-h-28 rounded-xl border p-2 text-left transition ${
+                            className={`min-h-14 rounded-lg border p-1.5 text-left transition sm:min-h-28 sm:rounded-xl sm:p-2 ${
                               isToday
                                 ? "border-green-500 bg-green-100 text-green-950 ring-2 ring-green-500"
                                 : isDeadline
@@ -1440,23 +1564,23 @@ export function LiveCrmApp() {
                                     : "border-slate-100 bg-slate-50 text-slate-400"
                             }`}
                           >
-                            <div className="mb-2 flex items-center justify-between">
-                              <span className={`text-sm font-bold ${isToday ? "grid h-7 w-7 place-items-center rounded-full bg-green-600 text-white" : ""}`}>{day.label}</span>
-                              {isToday && <span className="rounded-full bg-green-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Днес</span>}
+                            <div className="mb-1 flex items-center justify-between sm:mb-2">
+                              <span className={`text-sm font-bold ${isToday ? "grid h-6 w-6 place-items-center rounded-full bg-green-600 text-white sm:h-7 sm:w-7" : ""}`}>{day.label}</span>
+                              {isToday && <span className="hidden rounded-full bg-green-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white sm:inline">Днес</span>}
                               {!isToday && isDeadline && <span className="h-2 w-2 rounded-full bg-rose-600" />}
                             </div>
                             {orderForDay && (
-                              <p className="line-clamp-2 text-xs font-semibold">
+                              <p className="hidden line-clamp-2 text-xs font-semibold sm:block">
                                 {customerName(crm.customers, orderForDay.customer_id)} · {orderForDay.product || orderForDay.description || orderForDay.order_number}
                               </p>
                             )}
                             {savedNote && (
-                              <p className="mt-1 line-clamp-2 text-xs">
+                              <p className="mt-1 hidden line-clamp-2 text-xs sm:block">
                                 {savedNote.title}{savedNote.body ? ` · ${savedNote.body}` : ""}
                               </p>
                             )}
                             {selectedRange && !savedNote && (
-                              <p className="mt-1 text-xs font-semibold">Нов избран срок</p>
+                              <p className="mt-1 hidden text-xs font-semibold sm:block">Нов избран срок</p>
                             )}
                           </div>
                         );
