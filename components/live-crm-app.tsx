@@ -11,6 +11,8 @@ import {
   FileText,
   LayoutDashboard,
   Loader2,
+  Lock,
+  LogOut,
   MessageSquareText,
   PanelLeft,
   Pencil,
@@ -346,6 +348,11 @@ export function LiveCrmApp() {
     calendar_notes: []
   });
   const [loading, setLoading] = useState(true);
+  const [authState, setAuthState] = useState<"checking" | "login" | "authed">("checking");
+  const [authEnabled, setAuthEnabled] = useState(false);
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [search, setSearch] = useState("");
@@ -447,11 +454,69 @@ export function LiveCrmApp() {
   const ordersToday = crm.orders.filter((order) => new Date(order.created_at).toDateString() === new Date().toDateString());
 
   useEffect(() => {
-    loadCrm();
+    checkAuth();
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => undefined);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function checkAuth() {
+    try {
+      const response = await fetch("/api/auth", { cache: "no-store" });
+      const data = (await response.json()) as { authEnabled: boolean; authed: boolean };
+      setAuthEnabled(data.authEnabled);
+      if (data.authed) {
+        setAuthState("authed");
+        await loadCrm();
+      } else {
+        setAuthState("login");
+        setLoading(false);
+      }
+    } catch {
+      setAuthState("authed");
+      await loadCrm();
+    }
+  }
+
+  async function submitLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!loginPassword.trim()) return;
+    setLoginLoading(true);
+    setLoginError("");
+    try {
+      const response = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: loginPassword })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Входът не беше успешен.");
+      setLoginPassword("");
+      setAuthState("authed");
+      setLoading(true);
+      await loadCrm();
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : "Входът не беше успешен.");
+    } finally {
+      setLoginLoading(false);
+    }
+  }
+
+  async function logout() {
+    await fetch("/api/auth", { method: "DELETE" });
+    setAuthState("login");
+    setCrm({
+      configured: false,
+      customers: [],
+      orders: [],
+      files: [],
+      timeline: [],
+      notifications: [],
+      notes: [],
+      calendar_notes: []
+    });
+  }
 
   useEffect(() => {
     const storedModuleOrder = window.localStorage.getItem("printpilot:module-order");
@@ -997,6 +1062,49 @@ export function LiveCrmApp() {
       title: "Хвани и премести този модул",
       style: { order }
     };
+  }
+
+  if (authState !== "authed") {
+    return (
+      <main className="grid min-h-screen place-items-center p-4">
+        <div className="w-full max-w-sm rounded-2xl border border-line bg-white p-6 shadow-premium">
+          <div className="mb-5 flex flex-col items-center text-center">
+            <div className="mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-ink text-white">
+              <Lock size={26} />
+            </div>
+            <h1 className="text-xl font-bold text-ink">PrintPilot AI CRM</h1>
+            <p className="mt-1 text-sm text-muted">Въведи паролата, за да влезеш в системата.</p>
+          </div>
+          {authState === "checking" ? (
+            <div className="flex items-center justify-center gap-2 py-4 text-muted">
+              <Loader2 size={18} className="animate-spin" />
+              Проверка...
+            </div>
+          ) : (
+            <form onSubmit={submitLogin} className="space-y-3">
+              <input
+                type="password"
+                value={loginPassword}
+                onChange={(event) => setLoginPassword(event.target.value)}
+                placeholder="Парола"
+                autoFocus
+                className="w-full rounded-xl border border-line bg-white px-4 py-3 text-base outline-none focus:border-accent"
+              />
+              {loginError && (
+                <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{loginError}</p>
+              )}
+              <button
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-ink px-4 py-3 text-base font-semibold text-white"
+                disabled={loginLoading}
+              >
+                {loginLoading ? <Loader2 size={18} className="animate-spin" /> : <Lock size={18} />}
+                Влез
+              </button>
+            </form>
+          )}
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -2254,6 +2362,13 @@ export function LiveCrmApp() {
                       <p>Supabase статус: {crm.configured ? "свързан" : "не е свързан"}</p>
                       <p>За запис на клиенти, поръчки и файлове трябва да са добавени Supabase променливите на средата.</p>
                       <p>За AI анализ трябва да са добавени Cloudflare AI ключовете.</p>
+                      {authEnabled ? (
+                        <p className="rounded-xl bg-emerald-50 px-3 py-2 font-semibold text-emerald-700">Защитата с парола е включена.</p>
+                      ) : (
+                        <p className="rounded-xl bg-rose-50 px-3 py-2 font-semibold text-rose-700">
+                          Внимание: няма зададена парола! Добави променлива CRM_PASSWORD във Vercel, за да защитиш данните си.
+                        </p>
+                      )}
                     </div>
                     <div className="mt-5 grid gap-3 sm:grid-cols-2">
                       <button
@@ -2279,6 +2394,16 @@ export function LiveCrmApp() {
                         <RefreshCw size={16} />
                         Синхронизирай
                       </button>
+                      {authEnabled && (
+                        <button
+                          type="button"
+                          onClick={logout}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100"
+                        >
+                          <LogOut size={16} />
+                          Излез от системата
+                        </button>
+                      )}
                     </div>
                   </article>
                   <article className="premium-card rounded-2xl p-5">
@@ -2289,6 +2414,7 @@ export function LiveCrmApp() {
                       <p>SUPABASE_SERVICE_ROLE_KEY</p>
                       <p>CLOUDFLARE_ACCOUNT_ID</p>
                       <p>CLOUDFLARE_API_TOKEN</p>
+                      <p>CRM_PASSWORD (парола за вход)</p>
                     </div>
                   </article>
                 </section>

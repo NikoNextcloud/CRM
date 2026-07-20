@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAuthenticated } from "@/lib/auth";
 import { createSupabaseAdmin } from "@/lib/supabase-admin";
 
 type CrmAction =
@@ -115,6 +116,10 @@ const statusLabels: Record<string, string> = {
 };
 
 export async function GET() {
+  if (!(await isAuthenticated())) {
+    return NextResponse.json({ error: "Не си влязъл в системата." }, { status: 401 });
+  }
+
   const supabase = createSupabaseAdmin();
 
   if (!supabase) {
@@ -162,6 +167,10 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (!(await isAuthenticated())) {
+    return NextResponse.json({ error: "Не си влязъл в системата." }, { status: 401 });
+  }
+
   const supabase = createSupabaseAdmin();
   if (!supabase) {
     return NextResponse.json(

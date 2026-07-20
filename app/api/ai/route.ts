@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isAuthenticated } from "@/lib/auth";
 
 type AiRequest = {
   prompt?: string;
@@ -6,6 +7,10 @@ type AiRequest = {
 };
 
 export async function POST(request: Request) {
+  if (!(await isAuthenticated())) {
+    return NextResponse.json({ error: "Не си влязъл в системата." }, { status: 401 });
+  }
+
   const body = (await request.json()) as AiRequest;
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
   const apiToken = process.env.CLOUDFLARE_API_TOKEN;
