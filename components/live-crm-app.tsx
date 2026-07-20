@@ -318,6 +318,12 @@ function buildCalendarDays(date = new Date()) {
   });
 }
 
+function isOverdue(order: OrderRow) {
+  if (!order.deadline_at) return false;
+  if (["Completed", "Cancelled", "Archived"].includes(order.status)) return false;
+  return dateKey(order.deadline_at) < formatLocalDateKey(new Date());
+}
+
 function isDateInRange(day: string, start?: string | null, end?: string | null) {
   if (!day || !start || !end) return false;
   const from = start <= end ? start : end;
@@ -584,6 +590,32 @@ export function LiveCrmApp() {
   function cancelEditOrder() {
     setEditingOrderId("");
     setOrderForm(emptyOrder);
+  }
+
+  function exportOrdersCsv() {
+    const header = ["Номер", "Клиент", "Продукт", "Статус", "Количество", "Цена", "Разход", "Създадена", "Краен срок"];
+    const rows = crm.orders.map((order) => [
+      order.order_number,
+      customerName(crm.customers, order.customer_id),
+      order.product || order.description || "",
+      statusLabels[order.status] || order.status,
+      String(order.quantity),
+      String(money(order.price)),
+      String(money(order.cost)),
+      order.created_at ? order.created_at.slice(0, 10) : "",
+      order.deadline_at ? order.deadline_at.slice(0, 10) : ""
+    ]);
+    const csv = [header, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";"))
+      .join("\n");
+    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `porachki-${formatLocalDateKey(new Date())}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setMessage("Поръчките са експортирани в CSV файл.");
   }
 
   async function deleteOrder(orderId: string) {
@@ -948,7 +980,7 @@ export function LiveCrmApp() {
                 })}
               </section>}
 
-              {(showCustomerForm || showOrderForm) && <section {...moduleDragProps("forms")} className="mt-5 grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+              {(showCustomerForm || showOrderForm) && <section {...moduleDragProps("forms")} className={`mt-5 grid gap-5 ${showCustomerForm && showOrderForm ? "xl:grid-cols-[0.95fr_1.05fr]" : "grid-cols-1"}`}>
                 {showCustomerForm && <FormCard title={editingCustomer ? "Редакция на клиент" : "Добави клиент"} icon={<Users size={19} />}>
                   <form onSubmit={saveCustomer} className="grid gap-3 md:grid-cols-2">
                     <Input label="Име" value={customerForm.first_name} onChange={(value) => setCustomerForm({ ...customerForm, first_name: value })} />
@@ -1138,6 +1170,10 @@ export function LiveCrmApp() {
                             <p className="font-bold text-ink">{order.order_number}</p>
                             <p className="truncate text-sm text-slate-700">{order.product || order.description || "Обща поръчка"}</p>
                             <p className="mt-0.5 truncate text-sm text-muted">{customerName(crm.customers, order.customer_id)}</p>
+                            <p className="mt-0.5 text-sm text-muted">Създадена: {shortDate(order.created_at)}</p>
+                            {isOverdue(order) && (
+                              <span className="mt-1 inline-block rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold uppercase text-rose-700">Просрочена</span>
+                            )}
                           </div>
                           <span className="shrink-0 text-base font-bold text-ink">{currency(money(order.price))}</span>
                         </div>
@@ -1191,6 +1227,7 @@ export function LiveCrmApp() {
                         <tr>
                           <th className="px-4 py-3">Поръчка</th>
                           <th className="px-4 py-3">Клиент</th>
+                          <th className="px-4 py-3">Дата</th>
                           <th className="px-4 py-3">Статус</th>
                           <th className="px-4 py-3 text-right">Стойност</th>
                           <th className="px-4 py-3 text-right">Действие</th>
@@ -1204,6 +1241,12 @@ export function LiveCrmApp() {
                               <p className="text-muted">{order.product || order.description || "Обща поръчка"}</p>
                             </td>
                             <td className="px-4 py-3 text-slate-700">{customerName(crm.customers, order.customer_id)}</td>
+                            <td className="px-4 py-3 text-slate-700">
+                              <p>{shortDate(order.created_at)}</p>
+                              {isOverdue(order) && (
+                                <span className="mt-1 inline-block rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold uppercase text-rose-700">Просрочена</span>
+                              )}
+                            </td>
                             <td className="px-4 py-3">
                               <select
                                 value={order.status}
@@ -1259,9 +1302,24 @@ export function LiveCrmApp() {
                     <h3 className="text-lg font-bold text-ink">Поръчки</h3>
                     <p className="text-sm text-muted">Премествай поръчките между колоните или ги редактирай с молива. Колоната „Архив" изпраща поръчката в таб Архив.</p>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-muted">
-                    <Bell size={16} />
-                    Общо поръчки: {crm.orders.length}
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
+                    {crm.orders.filter(isOverdue).length > 0 && (
+                      <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-bold text-rose-700">
+                        Просрочени: {crm.orders.filter(isOverdue).length}
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1.5">
+                      <Bell size={16} />
+                      Общо поръчки: {crm.orders.length}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={exportOrdersCsv}
+                      className="rounded-xl border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink transition hover:bg-soft"
+                      title="Свали всички поръчки като CSV за Excel"
+                    >
+                      Експорт CSV
+                    </button>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-2 md:grid-cols-5 lg:grid-cols-10">
@@ -1283,6 +1341,9 @@ export function LiveCrmApp() {
                             {columnOrders.length}
                           </span>
                         </div>
+                        {status === "Archived" ? (
+                          <p className="text-xs font-semibold text-muted">Поръчките са в таб Архив.</p>
+                        ) : (
                         <div className="space-y-2">
                           {columnOrders.map((order) => (
                             <div
@@ -1306,10 +1367,17 @@ export function LiveCrmApp() {
                                 </button>
                               </div>
                               <p className="mt-1 text-xs text-muted">{customerName(crm.customers, order.customer_id)}</p>
-                              <p className="mt-1 text-xs text-muted">{shortDate(order.deadline_at)}</p>
+                              <p className="mt-1 flex items-center justify-between gap-1 text-xs text-muted">
+                                <span>{shortDate(order.deadline_at)}</span>
+                                <span className="font-semibold text-ink">{currency(money(order.price))}</span>
+                              </p>
+                              {isOverdue(order) && (
+                                <span className="mt-1 inline-block rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold uppercase text-rose-700">Просрочена</span>
+                              )}
                             </div>
                           ))}
                         </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1317,7 +1385,7 @@ export function LiveCrmApp() {
               </section>}
 
               {activeView === "Orders" && (
-                <section {...moduleDragProps("ordersForm")} className="mt-5 grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+                <section {...moduleDragProps("ordersForm")} className={`mt-5 grid gap-5 ${reminderForm.order_id ? "xl:grid-cols-[1.05fr_0.95fr]" : "grid-cols-1"}`}>
                   <FormCard title={editingOrderId ? "Редакция на поръчка" : "Добави поръчка"} icon={editingOrderId ? <Pencil size={19} /> : <Plus size={19} />}>
                     <form onSubmit={saveOrder} className="grid gap-3 md:grid-cols-2">
                       <label className="md:col-span-2">
@@ -1659,7 +1727,7 @@ export function LiveCrmApp() {
                 </section>
               )}
 
-              {(showCustomerProfile || showDeadlines) && <section {...moduleDragProps("profile")} className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+              {(showCustomerProfile || showDeadlines) && <section {...moduleDragProps("profile")} className={`mt-5 grid gap-5 ${showCustomerProfile && showDeadlines ? "xl:grid-cols-[1.15fr_0.85fr]" : "grid-cols-1"}`}>
                 {showCustomerProfile && <article className="premium-card rounded-2xl p-5">
                   <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
