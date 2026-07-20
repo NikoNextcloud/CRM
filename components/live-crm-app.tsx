@@ -362,6 +362,7 @@ export function LiveCrmApp() {
   const [activeView, setActiveView] = useState<AppView>("Dashboard");
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [archiveSearch, setArchiveSearch] = useState("");
+  const [viberDialogOrder, setViberDialogOrder] = useState<OrderRow | null>(null);
   const [archivePeriod, setArchivePeriod] = useState<"all" | "month" | "3months" | "year">("all");
   const [moduleOrder, setModuleOrder] = useState<ModuleId[]>([...defaultModuleOrder]);
   const [draggedModule, setDraggedModule] = useState<ModuleId | null>(null);
@@ -904,8 +905,7 @@ export function LiveCrmApp() {
     win.document.close();
   }
 
-  async function shareShippedViber(order: OrderRow) {
-    const customer = crm.customers.find((item) => item.id === order.customer_id);
+  function shippedMessageText(order: OrderRow) {
     const lines = [
       "📦 Здравейте! Вашата пратка беше изпратена успешно.",
       "Очаквайте доставка в рамките на срока, посочен от куриерската фирма."
@@ -914,22 +914,39 @@ export function LiveCrmApp() {
       lines.push(`Номер на товарителница: ${order.tracking_number}`);
     }
     lines.push("Благодарим Ви за доверието! Ако имате въпроси, сме на разположение.");
-    const text = lines.join("\n");
+    return lines.join("\n");
+  }
 
+  async function copyShippedText(order: OrderRow) {
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(shippedMessageText(order));
+      setMessage("Съобщението е копирано.");
+      return true;
     } catch {
-      // clipboard може да е недостъпен – продължаваме без копиране
+      setMessage("Копирането не се получи – маркирай текста и го копирай ръчно.");
+      return false;
     }
+  }
 
+  async function openViberChat(order: OrderRow) {
+    const customer = crm.customers.find((item) => item.id === order.customer_id);
+    await copyShippedText(order);
     const number = cleanPhone(customer?.viber || customer?.phone);
     if (number) {
-      setMessage(`Съобщението е копирано. Отваря се чатът с ${customer?.first_name || "клиента"} – просто го постави (Paste) и изпрати.`);
       window.location.href = `viber://chat?number=${encodeURIComponent(number)}`;
     } else {
-      setMessage("Клиентът няма записан Viber/телефонен номер – избери го ръчно във Viber. Съобщението е копирано.");
-      window.location.href = `viber://forward?text=${encodeURIComponent(text)}`;
+      setMessage("Клиентът няма записан Viber/телефонен номер.");
     }
+    setViberDialogOrder(null);
+  }
+
+  function openViberForward(order: OrderRow) {
+    window.location.href = `viber://forward?text=${encodeURIComponent(shippedMessageText(order))}`;
+    setViberDialogOrder(null);
+  }
+
+  function shareShippedViber(order: OrderRow) {
+    setViberDialogOrder(order);
   }
 
   async function deleteOrder(orderId: string) {
@@ -2533,6 +2550,58 @@ export function LiveCrmApp() {
           )}
         </section>
       </div>
+      {viberDialogOrder && (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-900/50 p-4" onClick={() => setViberDialogOrder(null)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-premium" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-3 flex items-center gap-2">
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-violet text-white">
+                <Package size={19} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-ink">Изпрати по Viber</h3>
+                <p className="text-sm text-muted">
+                  {customerName(crm.customers, viberDialogOrder.customer_id)} · {viberDialogOrder.order_number}
+                </p>
+              </div>
+            </div>
+            <div className="mb-4 whitespace-pre-line rounded-xl border border-line bg-soft p-3 text-sm leading-6 text-slate-700">
+              {shippedMessageText(viberDialogOrder)}
+            </div>
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => openViberForward(viberDialogOrder)}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet px-4 py-3 text-sm font-semibold text-white"
+              >
+                <Package size={17} />
+                Отвори Viber с готовия текст (избираш клиента)
+              </button>
+              <button
+                type="button"
+                onClick={() => openViberChat(viberDialogOrder)}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm font-semibold text-violet-700"
+              >
+                Отвори чата с клиента (текстът е копиран – постави го)
+              </button>
+              <button
+                type="button"
+                onClick={() => copyShippedText(viberDialogOrder)}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink hover:bg-soft"
+              >
+                <Copy size={16} />
+                Само копирай текста
+              </button>
+              <button
+                type="button"
+                onClick={() => setViberDialogOrder(null)}
+                className="inline-flex w-full items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold text-muted"
+              >
+                Затвори
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <nav className="fixed inset-x-2 bottom-2 z-50 grid grid-cols-6 gap-1 rounded-2xl border border-line bg-white/95 p-2 shadow-premium backdrop-blur lg:hidden">
         {navItems.map((item) => {
           const Icon = navIcons[item];
