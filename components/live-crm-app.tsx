@@ -14,6 +14,7 @@ import {
   Lock,
   LogOut,
   MessageSquareText,
+  Package,
   PanelLeft,
   Pencil,
   Phone,
@@ -919,6 +920,19 @@ export function LiveCrmApp() {
     window.location.href = url;
   }
 
+  function shareShippedViber(order: OrderRow) {
+    const lines = [
+      "📦 Здравейте! Вашата пратка беше изпратена успешно.",
+      "Очаквайте доставка в рамките на срока, посочен от куриерската фирма."
+    ];
+    if (order.tracking_number) {
+      lines.push(`Номер на товарителница: ${order.tracking_number}`);
+    }
+    lines.push("Благодарим Ви за доверието! Ако имате въпроси, сме на разположение.");
+    const url = `viber://forward?text=${encodeURIComponent(lines.join("\n"))}`;
+    window.location.href = url;
+  }
+
   async function deleteOrder(orderId: string) {
     const confirmed = window.confirm("Сигурен ли си, че искаш да изтриеш тази поръчка?");
     if (!confirmed) return;
@@ -1616,27 +1630,34 @@ export function LiveCrmApp() {
                           </div>
                         </div>
                         {order.notes && <p className="mt-2 rounded-lg bg-soft px-3 py-2 text-sm text-slate-700">{order.notes}</p>}
-                        <div className="mt-2 flex gap-2">
+                        <div className="mt-2 grid grid-cols-2 gap-2">
                           <button
                             type="button"
                             onClick={() => duplicateOrder(order)}
-                            className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-white text-sm font-semibold text-slate-600"
+                            className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-line bg-white text-sm font-semibold text-slate-600"
                           >
                             <Copy size={16} /> Дублирай
                           </button>
                           <button
                             type="button"
                             onClick={() => openOfferPdf(order)}
-                            className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 text-sm font-semibold text-blue-700"
+                            className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 text-sm font-semibold text-blue-700"
                           >
                             <FileText size={16} /> Оферта
                           </button>
                           <button
                             type="button"
                             onClick={() => shareOrderViber(order)}
-                            className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 text-sm font-semibold text-violet-700"
+                            className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 text-sm font-semibold text-violet-700"
                           >
-                            <Send size={16} /> Viber
+                            <Send size={16} /> Готова
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => shareShippedViber(order)}
+                            className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 text-sm font-semibold text-violet-700"
+                          >
+                            <Package size={16} /> Изпратена
                           </button>
                         </div>
                         <div className="mt-3 flex items-center justify-between gap-2">
@@ -1730,58 +1751,69 @@ export function LiveCrmApp() {
                                 <p className="text-xs text-muted">{Math.round(((money(order.price) - money(order.cost)) / money(order.price)) * 100)}%</p>
                               )}
                             </td>
-                            <td className="px-4 py-3 text-right">
-                              <button
-                                type="button"
-                                onClick={() => startEditOrder(order)}
-                                className="mr-2 inline-flex items-center justify-center rounded-lg border border-line bg-white p-2 text-slate-600 transition hover:bg-soft hover:text-ink"
-                                title="Редактирай поръчката"
-                              >
-                                <Pencil size={16} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => duplicateOrder(order)}
-                                className="mr-2 inline-flex items-center justify-center rounded-lg border border-line bg-white p-2 text-slate-600 transition hover:bg-soft hover:text-ink"
-                                title="Дублирай поръчката"
-                              >
-                                <Copy size={16} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => openOfferPdf(order)}
-                                className="mr-2 inline-flex items-center justify-center rounded-lg border border-blue-200 bg-blue-50 p-2 text-blue-700 transition hover:bg-blue-100"
-                                title="PDF оферта"
-                              >
-                                <FileText size={16} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => shareOrderViber(order)}
-                                className="mr-2 inline-flex items-center justify-center rounded-lg border border-violet-200 bg-violet-50 p-2 text-violet-700 transition hover:bg-violet-100"
-                                title="Изпрати по Viber: Поръчката е готова за получаване"
-                              >
-                                <Send size={16} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setReminderForm({ order_id: order.id, due_at: "", description: "" });
-                                  setActiveView("Orders");
-                                }}
-                                className="mr-2 inline-flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-700 transition hover:bg-amber-100"
-                                title="Добави напомняне"
-                              >
-                                <Bell size={16} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => deleteOrder(order.id)}
-                                className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 p-2 text-rose-700 transition hover:bg-rose-100"
-                                title="Изтрий поръчката"
-                              >
-                                <Trash2 size={16} />
-                              </button>
+                            <td className="px-4 py-3">
+                              <div className="ml-auto grid w-fit grid-cols-4 gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => startEditOrder(order)}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-slate-600 transition hover:bg-soft hover:text-ink"
+                                  title="Редактирай поръчката"
+                                >
+                                  <Pencil size={16} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => duplicateOrder(order)}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white text-slate-600 transition hover:bg-soft hover:text-ink"
+                                  title="Дублирай поръчката"
+                                >
+                                  <Copy size={16} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openOfferPdf(order)}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 transition hover:bg-blue-100"
+                                  title="PDF оферта"
+                                >
+                                  <FileText size={16} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setReminderForm({ order_id: order.id, due_at: "", description: "" });
+                                    setActiveView("Orders");
+                                  }}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 transition hover:bg-amber-100"
+                                  title="Добави напомняне"
+                                >
+                                  <Bell size={16} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => shareOrderViber(order)}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 text-violet-700 transition hover:bg-violet-100"
+                                  title="Viber: Поръчката е готова за получаване"
+                                >
+                                  <Send size={16} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => shareShippedViber(order)}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 text-violet-700 transition hover:bg-violet-100"
+                                  title="Viber: Пратката е изпратена"
+                                >
+                                  <Package size={16} />
+                                </button>
+                                <span />
+                                <button
+                                  type="button"
+                                  onClick={() => deleteOrder(order.id)}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 transition hover:bg-rose-100"
+                                  title="Изтрий поръчката"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -1916,7 +1948,6 @@ export function LiveCrmApp() {
                       <Input label="Разход" type="number" value={String(orderForm.cost)} onChange={(value) => setOrderForm({ ...orderForm, cost: Number(value) })} />
                       <Input label="Краен срок" type="date" value={orderForm.deadline_at} onChange={(value) => setOrderForm({ ...orderForm, deadline_at: value })} />
                     <Input label="Номер на товарителница" value={orderForm.tracking_number} onChange={(value) => setOrderForm({ ...orderForm, tracking_number: value })} />
-                      <Input label="Номер на товарителница" value={orderForm.tracking_number} onChange={(value) => setOrderForm({ ...orderForm, tracking_number: value })} />
                       <label className="md:col-span-2">
                         <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Описание</span>
                         <textarea
@@ -2082,9 +2113,17 @@ export function LiveCrmApp() {
                                 type="button"
                                 onClick={() => shareOrderViber(order)}
                                 className="inline-flex items-center justify-center rounded-lg border border-violet-200 bg-violet-50 p-2 text-violet-700 transition hover:bg-violet-100"
-                                title="Изпрати по Viber"
+                                title="Viber: Поръчката е готова"
                               >
                                 <Send size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => shareShippedViber(order)}
+                                className="inline-flex items-center justify-center rounded-lg border border-violet-200 bg-violet-50 p-2 text-violet-700 transition hover:bg-violet-100"
+                                title="Viber: Пратката е изпратена"
+                              >
+                                <Package size={16} />
                               </button>
                               <button
                                 type="button"
