@@ -1228,7 +1228,7 @@ export function LiveCrmApp() {
 
                   {/* Десктоп изглед: таблица */}
                   <div className="hidden overflow-x-auto rounded-xl border border-line md:block">
-                    <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                    <table className="w-full border-collapse text-left text-sm">
                       <thead className="bg-soft text-xs uppercase tracking-[0.12em] text-muted">
                         <tr>
                           <th className="px-4 py-3">Поръчка</th>
@@ -1306,7 +1306,7 @@ export function LiveCrmApp() {
                     Общо поръчки: {crm.orders.length}
                   </div>
                 </div>
-                <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 lg:snap-none">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
                   {statuses.map((status) => {
                     const columnOrders = crm.orders.filter((order) => order.status === status);
                     return (
@@ -1317,7 +1317,7 @@ export function LiveCrmApp() {
                           const id = event.dataTransfer.getData("text/plain");
                           if (id) moveOrder(id, status);
                         }}
-                        className={`min-h-40 w-[78vw] max-w-64 shrink-0 snap-start rounded-xl border p-3 sm:w-64 ${statusColumnColors[status]}`}
+                        className={`rounded-xl border p-3 ${columnOrders.length ? "min-h-40" : "min-h-0"} ${statusColumnColors[status]}`}
                       >
                         <div className="mb-3 flex items-center justify-between">
                           <p className="text-sm font-bold text-ink">{statusLabels[status]}</p>
