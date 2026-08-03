@@ -8,7 +8,9 @@ import {
   CalendarDays,
   ClipboardList,
   Copy,
+  Database,
   FileText,
+  HardDrive,
   LayoutDashboard,
   Loader2,
   Lock,
@@ -26,7 +28,8 @@ import {
   Sparkles,
   Trash2,
   TrendingUp,
-  Users
+  Users,
+  Wifi
 } from "lucide-react";
 import { currency } from "@/lib/utils";
 
@@ -115,6 +118,13 @@ type CalendarNoteRow = {
   created_at: string;
 };
 
+type SupabaseUsage = {
+  database_bytes: number | null;
+  storage_bytes: number;
+  auth_users: number | null;
+  egress_bytes: number | null;
+};
+
 type CrmPayload = {
   configured: boolean;
   customers: CustomerRow[];
@@ -124,6 +134,7 @@ type CrmPayload = {
   notifications: NotificationRow[];
   notes: NoteRow[];
   calendar_notes: CalendarNoteRow[];
+  usage: SupabaseUsage;
   error?: string;
 };
 
@@ -170,6 +181,14 @@ const navIcons = {
 
 const defaultModuleOrder = ["stats", "forms", "lists", "kanban", "ordersForm", "calendar", "profile", "settings"] as const;
 type ModuleId = (typeof defaultModuleOrder)[number];
+
+const TAX_RATE_PRIVATE = 0.15;
+const SUPABASE_FREE_LIMITS = {
+  databaseBytes: 500 * 1024 * 1024,
+  storageBytes: 1024 * 1024 * 1024,
+  authUsers: 50000,
+  bandwidthBytes: 10 * 1024 * 1024 * 1024
+};
 
 const statuses: OrderStatus[] = [
   "New",
@@ -288,6 +307,24 @@ function shortDate(value?: string | null) {
   return new Intl.DateTimeFormat("bg-BG", { day: "2-digit", month: "short", year: "numeric" }).format(localDateFromValue(value));
 }
 
+function bytesLabel(bytes: number | null) {
+  if (bytes === null) return "няма данни";
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function percentOfLimit(value: number | null, limit: number) {
+  if (value === null || limit <= 0) return null;
+  return Math.min(100, Math.round((value / limit) * 100));
+}
+
+function remainingLabel(value: number | null, limit: number, type: "bytes" | "count" = "bytes") {
+  if (value === null) return "няма данни";
+  const remaining = Math.max(0, limit - value);
+  return type === "bytes" ? bytesLabel(remaining) : new Intl.NumberFormat("bg-BG").format(remaining);
+}
+
 function cleanPhone(value?: string | null) {
   return (value || "").replace(/[^\d+]/g, "");
 }
@@ -348,7 +385,13 @@ export function LiveCrmApp() {
     timeline: [],
     notifications: [],
     notes: [],
-    calendar_notes: []
+    calendar_notes: [],
+    usage: {
+      database_bytes: null,
+      storage_bytes: 0,
+      auth_users: null,
+      egress_bytes: null
+    }
   });
   const [loading, setLoading] = useState(true);
   const [authState, setAuthState] = useState<"checking" | "login" | "authed">("checking");
@@ -454,6 +497,17 @@ export function LiveCrmApp() {
 
   const totalRevenue = crm.orders.reduce((sum, order) => sum + money(order.price), 0);
   const totalProfit = crm.orders.reduce((sum, order) => sum + money(order.price) - money(order.cost), 0);
+  const privateCustomerIds = new Set(
+    crm.customers
+      .filter((customer) => !customer.company?.trim())
+      .map((customer) => customer.id)
+  );
+  const privateOrders = crm.orders.filter(
+    (order) => privateCustomerIds.has(order.customer_id) && !["Cancelled", "Archived"].includes(order.status)
+  );
+  const privateTaxableProfit = privateOrders.reduce((sum, order) => sum + Math.max(0, money(order.price) - money(order.cost)), 0);
+  const privateTaxDue = privateTaxableProfit * TAX_RATE_PRIVATE;
+  const privateNetAfterTax = Math.max(0, privateTaxableProfit - privateTaxDue);
   const activeOrders = crm.orders.filter((order) => !["Completed", "Cancelled", "Archived"].includes(order.status));
   const ordersToday = crm.orders.filter((order) => new Date(order.created_at).toDateString() === new Date().toDateString());
 
@@ -536,7 +590,13 @@ export function LiveCrmApp() {
       timeline: [],
       notifications: [],
       notes: [],
-      calendar_notes: []
+      calendar_notes: [],
+      usage: {
+        database_bytes: null,
+        storage_bytes: 0,
+        auth_users: null,
+        egress_bytes: null
+      }
     });
   }
 
@@ -1098,6 +1158,8 @@ export function LiveCrmApp() {
     { label: "Поръчки днес", value: ordersToday.length.toString(), icon: CalendarDays, tone: "text-coral" },
     { label: "Общ оборот", value: currency(totalRevenue), icon: BarChart3, tone: "text-ink" },
     { label: "Обща печалба", value: currency(totalProfit), icon: Sparkles, tone: "text-teal" },
+    { label: "Данък частни лица 15%", value: currency(privateTaxDue), icon: Database, tone: "text-rose-600" },
+    { label: "Остава след данък", value: currency(privateNetAfterTax), icon: TrendingUp, tone: "text-emerald-600" },
     {
       label: "Средна стойност",
       value: crm.orders.length ? currency(totalRevenue / crm.orders.length) : currency(0),
@@ -1122,6 +1184,48 @@ export function LiveCrmApp() {
   const showKanban = activeView === "Dashboard" || activeView === "Orders";
   const showCustomerProfile = activeView === "Dashboard" || activeView === "Clients";
   const showDeadlines = activeView === "Dashboard";
+  const dbPercent = percentOfLimit(crm.usage.database_bytes, SUPABASE_FREE_LIMITS.databaseBytes);
+  const storagePercent = percentOfLimit(crm.usage.storage_bytes, SUPABASE_FREE_LIMITS.storageBytes);
+  const authPercent = percentOfLimit(crm.usage.auth_users, SUPABASE_FREE_LIMITS.authUsers);
+  const bandwidthPercent = percentOfLimit(crm.usage.egress_bytes, SUPABASE_FREE_LIMITS.bandwidthBytes);
+  const supabaseHealth = [
+    {
+      label: "API връзка",
+      value: crm.configured ? "Свързано" : "Липсва настройка",
+      ok: crm.configured,
+      detail: crm.configured ? "Клиенти, поръчки и файлове се четат през Supabase." : "Добави Supabase env променливите."
+    },
+    {
+      label: "База данни",
+      value: crm.usage.database_bytes === null ? "Няма SQL функция" : bytesLabel(crm.usage.database_bytes),
+      ok: crm.usage.database_bytes !== null && crm.usage.database_bytes < SUPABASE_FREE_LIMITS.databaseBytes * 0.8,
+      detail:
+        crm.usage.database_bytes === null
+          ? "Пусни функцията get_database_size от schema.sql за точен размер."
+          : `Остават ${remainingLabel(crm.usage.database_bytes, SUPABASE_FREE_LIMITS.databaseBytes)} от free лимита.`
+    },
+    {
+      label: "Storage",
+      value: bytesLabel(crm.usage.storage_bytes),
+      ok: crm.usage.storage_bytes < SUPABASE_FREE_LIMITS.storageBytes * 0.8,
+      detail: `Остават ${remainingLabel(crm.usage.storage_bytes, SUPABASE_FREE_LIMITS.storageBytes)} за файлове.`
+    },
+    {
+      label: "MAU",
+      value: crm.usage.auth_users === null ? "Не се използва" : new Intl.NumberFormat("bg-BG").format(crm.usage.auth_users),
+      ok: crm.usage.auth_users === null || crm.usage.auth_users < SUPABASE_FREE_LIMITS.authUsers * 0.8,
+      detail:
+        crm.usage.auth_users === null
+          ? "CRM входът е с парола, не със Supabase Auth потребители."
+          : `Остават ${remainingLabel(crm.usage.auth_users, SUPABASE_FREE_LIMITS.authUsers, "count")} активни потребители.`
+    }
+  ];
+  const freePlanCards = [
+    { label: "База 500 MB", used: crm.usage.database_bytes, limit: SUPABASE_FREE_LIMITS.databaseBytes, percent: dbPercent, icon: Database },
+    { label: "Storage 1 GB", used: crm.usage.storage_bytes, limit: SUPABASE_FREE_LIMITS.storageBytes, percent: storagePercent, icon: HardDrive },
+    { label: "MAU 50 000", used: crm.usage.auth_users, limit: SUPABASE_FREE_LIMITS.authUsers, percent: authPercent, icon: Users },
+    { label: "Egress 10 GB", used: crm.usage.egress_bytes, limit: SUPABASE_FREE_LIMITS.bandwidthBytes, percent: bandwidthPercent, icon: Wifi }
+  ];
 
   function moduleDragProps(id: ModuleId) {
     const order = moduleOrder.includes(id) ? moduleOrder.indexOf(id) : defaultModuleOrder.indexOf(id);
@@ -1374,6 +1478,76 @@ export function LiveCrmApp() {
                   );
                 })}
               </section>}
+
+              {showStats && (
+                <section className="mt-5 grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
+                  <article className="premium-card rounded-2xl p-5">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-lg font-bold text-ink">Supabase връзка</h3>
+                        <p className="text-sm text-muted">Статус на живата база и причините за всяка светлина.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={loadCrm}
+                        className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-white shadow-subtle ${
+                          crm.configured ? "bg-emerald-600 hover:bg-emerald-700" : "bg-rose-600 hover:bg-rose-700"
+                        }`}
+                      >
+                        <Wifi size={16} />
+                        {crm.configured ? "Свързано" : "Не е свързано"}
+                      </button>
+                    </div>
+                    <div className="space-y-3">
+                      {supabaseHealth.map((item) => (
+                        <div key={item.label} className="flex items-start gap-3 rounded-xl border border-line bg-soft p-3">
+                          <span className={`mt-1 h-3 w-3 rounded-full shadow-[0_0_18px_currentColor] ${item.ok ? "bg-emerald-500 text-emerald-500" : "bg-amber-500 text-amber-500"}`} />
+                          <div className="min-w-0">
+                            <p className="font-semibold text-ink">{item.label}: {item.value}</p>
+                            <p className="text-sm text-muted">{item.detail}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                  <article className="premium-card rounded-2xl p-5">
+                    <div className="mb-4 flex items-center gap-2">
+                      <Database size={19} className="text-accent" />
+                      <h3 className="text-lg font-bold text-ink">Остава до free плана</h3>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {freePlanCards.map((item) => {
+                        const Icon = item.icon;
+                        const percent = item.percent ?? 0;
+                        const isCount = item.label.includes("MAU");
+                        return (
+                          <div key={item.label} className="rounded-xl border border-line bg-soft p-3">
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              <span className="inline-flex items-center gap-2 text-sm font-bold text-ink">
+                                <Icon size={16} />
+                                {item.label}
+                              </span>
+                              <span className="text-xs font-semibold text-muted">{item.percent === null ? "няма данни" : `${percent}%`}</span>
+                            </div>
+                            <div className="h-2.5 overflow-hidden rounded-full bg-white">
+                              <div
+                                className={`h-full rounded-full ${percent >= 80 ? "bg-rose-500" : percent >= 60 ? "bg-amber-500" : "bg-emerald-500"}`}
+                                style={{ width: `${percent}%` }}
+                              />
+                            </div>
+                            <p className="mt-2 text-xs font-semibold text-muted">
+                              Остава: {remainingLabel(item.used, item.limit, isCount ? "count" : "bytes")}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-3 text-xs leading-5 text-muted">
+                      Egress се отчита в Supabase Dashboard; приложението показва точен остатък само ако бъде подаден от API/настройки.
+                    </p>
+                  </article>
+                </section>
+              )}
 
               {showStats && (
                 <section className="mt-5 grid gap-5 lg:grid-cols-2">

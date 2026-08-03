@@ -183,6 +183,15 @@ alter table customers add column if not exists whatsapp text;
 create index if not exists idx_calendar_notes_start_date on calendar_notes(start_date);
 create index if not exists idx_calendar_notes_customer_id on calendar_notes(customer_id);
 
+create or replace function get_database_size()
+returns bigint
+language sql
+security definer
+set search_path = public
+as $$
+  select pg_database_size(current_database());
+$$;
+
 insert into storage.buckets (id, name, public)
 values ('order-files', 'order-files', false)
 on conflict (id) do nothing;
@@ -196,5 +205,5 @@ values ('company-assets', 'company-assets', true)
 on conflict (id) do nothing;
 
 insert into settings (company_name, currency, vat_percent)
-values ('PrintPilot Studio', 'BGN', 20)
+values ('PrintPilot Studio', 'EUR', 20)
 on conflict do nothing;

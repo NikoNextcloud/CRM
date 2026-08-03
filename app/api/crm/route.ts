@@ -115,6 +115,41 @@ const statusLabels: Record<string, string> = {
   Cancelled: "Отказана"
 };
 
+const emptyUsage = {
+  database_bytes: null as number | null,
+  storage_bytes: 0,
+  auth_users: null as number | null,
+  egress_bytes: null as number | null
+};
+
+async function loadSupabaseUsage(supabase: ReturnType<typeof createSupabaseAdmin>) {
+  if (!supabase) return emptyUsage;
+
+  const [{ data: databaseSize }, { data: storageObjects }] = await Promise.all([
+    supabase.rpc("get_database_size").maybeSingle(),
+    supabase.schema("storage").from("objects").select("metadata")
+  ]);
+
+  const databaseBytes =
+    typeof databaseSize === "number"
+      ? databaseSize
+      : databaseSize && typeof databaseSize === "object" && "size" in databaseSize && typeof databaseSize.size === "number"
+        ? databaseSize.size
+        : null;
+
+  const storageBytes = (storageObjects ?? []).reduce((sum, item) => {
+    const metadata = item.metadata as { size?: number } | null;
+    return sum + (typeof metadata?.size === "number" ? metadata.size : 0);
+  }, 0);
+
+  return {
+    database_bytes: databaseBytes,
+    storage_bytes: storageBytes,
+    auth_users: null,
+    egress_bytes: null
+  };
+}
+
 export async function GET() {
   if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Не си влязъл в системата." }, { status: 401 });
@@ -132,20 +167,22 @@ export async function GET() {
         timeline: [],
         notifications: [],
         notes: [],
-        calendar_notes: []
+        calendar_notes: [],
+        usage: emptyUsage
       },
       { status: 200 }
     );
   }
 
-  const [customers, orders, files, timeline, notifications, notes, calendarNotes] = await Promise.all([
+  const [customers, orders, files, timeline, notifications, notes, calendarNotes, usage] = await Promise.all([
     supabase.from("customers").select("*").order("created_at", { ascending: false }),
     supabase.from("orders").select("*").order("created_at", { ascending: false }),
     supabase.from("files").select("*").order("created_at", { ascending: false }),
     supabase.from("timeline").select("*").order("event_at", { ascending: false }),
     supabase.from("notifications").select("*").order("created_at", { ascending: false }),
     supabase.from("notes").select("*").order("created_at", { ascending: false }),
-    supabase.from("calendar_notes").select("*").order("start_date", { ascending: true })
+    supabase.from("calendar_notes").select("*").order("start_date", { ascending: true }),
+    loadSupabaseUsage(supabase)
   ]);
 
   const calendarTableMissing = calendarNotes.error?.message.toLowerCase().includes("calendar_notes");
@@ -162,7 +199,8 @@ export async function GET() {
     timeline: timeline.data ?? [],
     notifications: notifications.data ?? [],
     notes: notes.data ?? [],
-    calendar_notes: calendarTableMissing ? [] : calendarNotes.data ?? []
+    calendar_notes: calendarTableMissing ? [] : calendarNotes.data ?? [],
+    usage
   });
 }
 
