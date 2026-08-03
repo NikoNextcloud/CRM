@@ -1296,15 +1296,14 @@ export function LiveCrmApp() {
   return (
     <main className="min-h-screen pb-24 lg:pb-0">
       <div className="flex min-h-screen">
-        <aside className="glass-panel sticky top-0 hidden h-screen w-[220px] shrink-0 flex-col justify-between px-3 pb-5 pt-0 lg:flex">
+        <aside className="glass-panel sticky top-0 hidden h-screen w-72 shrink-0 flex-col justify-between p-5 lg:flex">
           <div>
-            <div className="mb-4 flex items-center gap-3 border-b border-white/10 px-2 py-7">
-              <div className="grid h-9 w-9 place-items-center rounded-xl bg-ink text-lg text-white shadow-subtle">
-                🖨️
+            <div className="mb-8 flex items-center gap-3">
+              <div className="grid h-11 w-11 place-items-center rounded-xl bg-ink text-white shadow-subtle">
+                <PanelLeft size={21} />
               </div>
               <div>
-                <h1 className="text-base font-bold leading-tight text-ink">AI CRM</h1>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">на живо</p>
+                <h1 className="text-xl font-bold text-ink">AI CRM на живо</h1>
               </div>
             </div>
             <nav className="space-y-1">
@@ -1412,14 +1411,6 @@ export function LiveCrmApp() {
                     placeholder="Търси клиенти, поръчки..."
                   />
                 </label>
-                <button
-                  type="button"
-                  onClick={() => setActiveView("Orders")}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-ink px-4 py-2.5 text-sm font-semibold text-white shadow-subtle"
-                >
-                  <Plus size={17} />
-                  Нова поръчка
-                </button>
                 <button
                   onClick={loadCrm}
                   className="inline-flex items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink hover:bg-soft"

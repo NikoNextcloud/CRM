@@ -10,23 +10,23 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        ink: "#1A1A2E",
-        muted: "#6B6B8A",
-        line: "rgba(108, 99, 255, 0.12)",
+        ink: "#0F172A",
+        muted: "#667085",
+        line: "#E4E7EC",
         panel: "#FFFFFF",
-        soft: "#F8F7FF",
-        accent: "#6C63FF",
-        teal: "#0D9488",
-        coral: "#F59E0B",
-        violet: "#6C63FF"
+        soft: "#F8FAFC",
+        accent: "#1D4ED8",
+        teal: "#0F766E",
+        coral: "#EA580C",
+        violet: "#6D28D9"
       },
       boxShadow: {
-        premium: "0 8px 32px rgba(108, 99, 255, 0.15)",
-        subtle: "0 2px 16px rgba(108, 99, 255, 0.08)"
+        premium: "0 18px 60px rgba(23, 32, 51, 0.09)",
+        subtle: "0 10px 35px rgba(23, 32, 51, 0.06)"
       },
       borderRadius: {
-        xl: "0.625rem",
-        "2xl": "0.875rem"
+        xl: "0.75rem",
+        "2xl": "1rem"
       }
     }
   },
