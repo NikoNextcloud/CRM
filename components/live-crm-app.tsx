@@ -509,11 +509,6 @@ export function LiveCrmApp() {
   const privateTaxDue = privateTaxableProfit * TAX_RATE_PRIVATE;
   const privateNetAfterTax = Math.max(0, privateTaxableProfit - privateTaxDue);
   const activeOrders = crm.orders.filter((order) => !["Completed", "Cancelled", "Archived"].includes(order.status));
-  const currentMonthKey = formatLocalDateKey(new Date()).slice(0, 7);
-  const currentMonthOrders = crm.orders.filter((order) => String(order.created_at || "").slice(0, 7) === currentMonthKey);
-  const currentMonthRevenue = currentMonthOrders.reduce((sum, order) => sum + money(order.price), 0);
-  const currentMonthCompleted = currentMonthOrders.filter((order) => order.status === "Completed").length;
-  const overdueOrders = crm.orders.filter(isOverdue);
   const ordersToday = crm.orders.filter((order) => new Date(order.created_at).toDateString() === new Date().toDateString());
 
   useEffect(() => {
@@ -1158,10 +1153,19 @@ export function LiveCrmApp() {
   }
 
   const statCards = [
-    { label: "Оборот - този месец", value: currency(currentMonthRevenue || totalRevenue), icon: BarChart3, tone: "text-accent", accent: "border-t-accent" },
-    { label: "Активни поръчки", value: activeOrders.length.toString(), icon: ClipboardList, tone: "text-amber-600", accent: "border-t-amber-400" },
-    { label: "Завършени - месец", value: currentMonthCompleted.toString(), icon: Save, tone: "text-teal", accent: "border-t-teal-400" },
-    { label: "Данък частни лица 15%", value: currency(privateTaxDue), icon: Database, tone: "text-rose-600", accent: "border-t-rose-400" }
+    { label: "Общо клиенти", value: crm.customers.length.toString(), icon: Users, tone: "text-accent" },
+    { label: "Общо поръчки", value: crm.orders.length.toString(), icon: ClipboardList, tone: "text-violet" },
+    { label: "Поръчки днес", value: ordersToday.length.toString(), icon: CalendarDays, tone: "text-coral" },
+    { label: "Общ оборот", value: currency(totalRevenue), icon: BarChart3, tone: "text-ink" },
+    { label: "Обща печалба", value: currency(totalProfit), icon: Sparkles, tone: "text-teal" },
+    { label: "Данък частни лица 15%", value: currency(privateTaxDue), icon: Database, tone: "text-rose-600" },
+    { label: "Остава след данък", value: currency(privateNetAfterTax), icon: TrendingUp, tone: "text-emerald-600" },
+    {
+      label: "Средна стойност",
+      value: crm.orders.length ? currency(totalRevenue / crm.orders.length) : currency(0),
+      icon: TrendingUp,
+      tone: "text-violet"
+    }
   ];
 
   const selectedRevenue = selectedCustomerOrders.reduce((sum, order) => sum + money(order.price), 0);
@@ -1173,13 +1177,13 @@ export function LiveCrmApp() {
   const selectedCalendarCustomer = crm.customers.find((customer) => customer.id === calendarForm.customer_id);
   const selectedCalendarOrder = crm.orders.find((order) => order.id === calendarForm.order_id);
   const showStats = activeView === "Dashboard";
-  const showCustomerForm = activeView === "Clients";
-  const showOrderForm = false;
-  const showCustomerList = activeView === "Clients";
-  const showOrderList = activeView === "Orders";
+  const showCustomerForm = activeView === "Dashboard" || activeView === "Clients";
+  const showOrderForm = activeView === "Dashboard";
+  const showCustomerList = activeView === "Dashboard" || activeView === "Clients";
+  const showOrderList = activeView === "Dashboard" || activeView === "Orders";
   const showKanban = activeView === "Dashboard" || activeView === "Orders";
-  const showCustomerProfile = activeView === "Clients";
-  const showDeadlines = false;
+  const showCustomerProfile = activeView === "Dashboard" || activeView === "Clients";
+  const showDeadlines = activeView === "Dashboard";
   const dbPercent = percentOfLimit(crm.usage.database_bytes, SUPABASE_FREE_LIMITS.databaseBytes);
   const storagePercent = percentOfLimit(crm.usage.storage_bytes, SUPABASE_FREE_LIMITS.storageBytes);
   const authPercent = percentOfLimit(crm.usage.auth_users, SUPABASE_FREE_LIMITS.authUsers);
@@ -1469,11 +1473,11 @@ export function LiveCrmApp() {
             </div>
           ) : (
             <div className="flex flex-col">
-              {showStats && <section {...moduleDragProps("stats")} className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
+              {showStats && <section {...moduleDragProps("stats")} className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-5">
                 {statCards.map((stat) => {
                   const Icon = stat.icon;
                   return (
-                    <article key={stat.label} className={`premium-card rounded-2xl border-t-4 p-4 sm:p-5 ${stat.accent}`}>
+                    <article key={stat.label} className="premium-card rounded-2xl p-3 sm:p-4">
                       <div className="mb-2 flex items-center justify-between sm:mb-4">
                         <span className="text-xs font-medium text-muted sm:text-sm">{stat.label}</span>
                         <Icon size={18} className={`shrink-0 ${stat.tone}`} />
@@ -1485,175 +1489,6 @@ export function LiveCrmApp() {
               </section>}
 
               {showStats && (
-                <section {...moduleDragProps("lists")} className="mt-5 grid gap-5 xl:grid-cols-[1fr_320px]">
-                  <article className="premium-card rounded-2xl p-0">
-                    <div className="flex flex-col gap-3 border-b border-line px-5 py-4 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <h3 className="text-lg font-bold text-ink">Последни поръчки</h3>
-                        <p className="text-sm text-muted">Показани 6 от {filteredOrders.length}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setActiveView("Orders")}
-                        className="inline-flex w-fit items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-sm font-bold text-accent transition hover:bg-soft"
-                      >
-                        Виж всички
-                      </button>
-                    </div>
-                    <div className="space-y-3 p-4 md:hidden">
-                      {filteredOrders.slice(0, 6).map((order) => (
-                        <div key={order.id} className="rounded-xl border border-line bg-white p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="font-bold text-accent">#{order.order_number}</p>
-                              <p className="truncate text-sm font-semibold text-ink">{order.product || order.description || "Обща поръчка"}</p>
-                              <p className="truncate text-sm text-muted">{customerName(crm.customers, order.customer_id)}</p>
-                            </div>
-                            <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${statusColors[order.status]}`}>{statusLabels[order.status]}</span>
-                          </div>
-                          <div className="mt-3 flex items-center justify-between text-sm">
-                            <span className={isOverdue(order) ? "font-bold text-rose-600" : "text-muted"}>{shortDate(order.deadline_at || order.created_at)}</span>
-                            <span className="font-bold text-ink">{currency(money(order.price))}</span>
-                          </div>
-                          <div className="mt-3 flex justify-end gap-2">
-                            <button type="button" onClick={() => startEditOrder(order)} className="grid h-9 w-9 place-items-center rounded-lg border border-line bg-white text-slate-600" title="Редактирай">
-                              <Pencil size={16} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setReminderForm({ order_id: order.id, due_at: "", description: "" });
-                                setActiveView("Orders");
-                              }}
-                              className="grid h-9 w-9 place-items-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700"
-                              title="Напомняне"
-                            >
-                              <Bell size={16} />
-                            </button>
-                            <button type="button" onClick={() => deleteOrder(order.id)} className="grid h-9 w-9 place-items-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700" title="Изтрий">
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                      {!filteredOrders.length && <p className="rounded-xl bg-soft p-4 text-sm text-muted">Няма поръчки.</p>}
-                    </div>
-                    <div className="hidden overflow-x-auto md:block">
-                      <table className="w-full border-collapse text-left text-sm">
-                        <thead className="bg-soft text-xs uppercase tracking-[0.12em] text-muted">
-                          <tr>
-                            <th className="px-5 py-4">#</th>
-                            <th className="px-5 py-4">Поръчка</th>
-                            <th className="px-5 py-4">Клиент</th>
-                            <th className="px-5 py-4">Статус</th>
-                            <th className="px-5 py-4 text-right">Сума</th>
-                            <th className="px-5 py-4">Срок</th>
-                            <th className="px-5 py-4 text-right">Действие</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-line bg-white">
-                          {filteredOrders.slice(0, 6).map((order) => (
-                            <tr key={order.id} className="hover:bg-soft">
-                              <td className="px-5 py-4 font-bold text-accent">#{order.order_number}</td>
-                              <td className="px-5 py-4">
-                                <p className="font-semibold text-ink">{order.product || order.description || "Обща поръчка"}</p>
-                                <p className="text-xs text-muted">{order.description || `${order.quantity} бр.`}</p>
-                              </td>
-                              <td className="px-5 py-4 text-slate-700">{customerName(crm.customers, order.customer_id)}</td>
-                              <td className="px-5 py-4">
-                                <select
-                                  value={order.status}
-                                  onChange={(event) => moveOrder(order.id, event.target.value as OrderStatus)}
-                                  className={`rounded-full px-2.5 py-1 text-xs font-semibold outline-none ${statusColors[order.status]}`}
-                                >
-                                  {statuses.map((status) => (
-                                    <option key={status} value={status}>{statusLabels[status]}</option>
-                                  ))}
-                                </select>
-                              </td>
-                              <td className="px-5 py-4 text-right font-bold text-ink">{currency(money(order.price))}</td>
-                              <td className={`px-5 py-4 ${isOverdue(order) ? "font-bold text-rose-600" : "text-muted"}`}>
-                                {shortDate(order.deadline_at)}
-                              </td>
-                              <td className="px-5 py-4">
-                                <div className="ml-auto flex w-fit items-center gap-1.5">
-                                  <button type="button" onClick={() => startEditOrder(order)} className="grid h-8 w-8 place-items-center rounded-lg border border-line bg-white text-slate-600 transition hover:bg-soft" title="Редактирай">
-                                    <Pencil size={15} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setReminderForm({ order_id: order.id, due_at: "", description: "" });
-                                      setActiveView("Orders");
-                                    }}
-                                    className="grid h-8 w-8 place-items-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 transition hover:bg-amber-100"
-                                    title="Напомняне"
-                                  >
-                                    <Bell size={15} />
-                                  </button>
-                                  <button type="button" onClick={() => deleteOrder(order.id)} className="grid h-8 w-8 place-items-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 transition hover:bg-rose-100" title="Изтрий">
-                                    <Trash2 size={15} />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      {!filteredOrders.length && <p className="p-5 text-sm text-muted">Няма поръчки.</p>}
-                    </div>
-                  </article>
-
-                  <aside className="space-y-5">
-                    <article className="premium-card rounded-2xl p-5">
-                      <div className="mb-4 flex items-center justify-between gap-2">
-                        <h3 className="text-base font-bold text-ink">Оборот по месеци</h3>
-                        <BarChart3 size={18} className="text-accent" />
-                      </div>
-                      <div className="flex h-28 items-end gap-2">
-                        {monthlyRevenue.map((month) => {
-                          const max = Math.max(...monthlyRevenue.map((item) => item.total), 1);
-                          const height = Math.max((month.total / max) * 100, month.total > 0 ? 8 : 3);
-                          return (
-                            <div key={month.key} className="flex h-full flex-1 flex-col items-center justify-end gap-1">
-                              <div className="w-full rounded-t-lg bg-accent transition-all" style={{ height: `${height}%` }} title={`${month.label}: ${currency(month.total)}`} />
-                              <span className="text-[10px] font-semibold text-muted">{month.label}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </article>
-                    <article className="premium-card rounded-2xl p-5">
-                      <div className="mb-4 flex items-center justify-between gap-2">
-                        <h3 className="text-base font-bold text-ink">Топ клиенти</h3>
-                        <TrendingUp size={18} className="text-teal" />
-                      </div>
-                      {topClients.length ? (
-                        <div className="space-y-4">
-                          {topClients.slice(0, 4).map((item, index) => {
-                            const max = topClients[0].revenue || 1;
-                            return (
-                              <div key={item.customer.id}>
-                                <div className="mb-1 flex items-center justify-between gap-2 text-sm">
-                                  <span className="truncate font-semibold text-ink">{index + 1}. {displayCustomer(item.customer)}</span>
-                                  <span className="shrink-0 font-bold text-ink">{currency(item.revenue)}</span>
-                                </div>
-                                <div className="h-2 rounded-full bg-soft">
-                                  <div className="h-2 rounded-full bg-accent" style={{ width: `${(item.revenue / max) * 100}%` }} />
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted">Все още няма поръчки с приходи.</p>
-                      )}
-                    </article>
-                  </aside>
-                </section>
-              )}
-
-              {false && (
                 <section className="mt-5 grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
                   <article className="premium-card rounded-2xl p-5">
                     <div className="mb-4 flex items-center justify-between gap-3">
@@ -1723,7 +1558,7 @@ export function LiveCrmApp() {
                 </section>
               )}
 
-              {false && (
+              {showStats && (
                 <section className="mt-5 grid gap-5 lg:grid-cols-2">
                   <article className="premium-card rounded-2xl p-5">
                     <div className="mb-4 flex items-center gap-2">
@@ -2174,7 +2009,7 @@ export function LiveCrmApp() {
               {showKanban && <section {...moduleDragProps("kanban")} className="mt-5 premium-card rounded-2xl p-5">
                 <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <h3 className="text-lg font-bold text-ink">{activeView === "Dashboard" ? "Канбан преглед" : "Kanban на живо"}</h3>
+                    <h3 className="text-lg font-bold text-ink">Поръчки</h3>
                     <p className="text-sm text-muted">Премествай поръчките между колоните или ги редактирай с молива. Колоната „Архив" изпраща поръчката в таб Архив.</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
@@ -2828,44 +2663,6 @@ export function LiveCrmApp() {
                           Внимание: няма зададена парола! Добави променлива CRM_PASSWORD във Vercel, за да защитиш данните си.
                         </p>
                       )}
-                    </div>
-                    <div className="mt-5 space-y-3">
-                      {supabaseHealth.map((item) => (
-                        <div key={item.label} className="flex items-start gap-3 rounded-xl border border-line bg-soft p-3">
-                          <span className={`mt-1 h-3 w-3 rounded-full shadow-[0_0_18px_currentColor] ${item.ok ? "bg-emerald-500 text-emerald-500" : "bg-amber-500 text-amber-500"}`} />
-                          <div className="min-w-0">
-                            <p className="font-semibold text-ink">{item.label}: {item.value}</p>
-                            <p className="text-sm text-muted">{item.detail}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                      {freePlanCards.map((item) => {
-                        const Icon = item.icon;
-                        const percent = item.percent ?? 0;
-                        const isCount = item.label.includes("MAU");
-                        return (
-                          <div key={item.label} className="rounded-xl border border-line bg-white p-3">
-                            <div className="mb-2 flex items-center justify-between gap-2">
-                              <span className="inline-flex items-center gap-2 text-sm font-bold text-ink">
-                                <Icon size={16} />
-                                {item.label}
-                              </span>
-                              <span className="text-xs font-semibold text-muted">{item.percent === null ? "няма данни" : `${percent}%`}</span>
-                            </div>
-                            <div className="h-2.5 overflow-hidden rounded-full bg-soft">
-                              <div
-                                className={`h-full rounded-full ${percent >= 80 ? "bg-rose-500" : percent >= 60 ? "bg-amber-500" : "bg-emerald-500"}`}
-                                style={{ width: `${percent}%` }}
-                              />
-                            </div>
-                            <p className="mt-2 text-xs font-semibold text-muted">
-                              Остава: {remainingLabel(item.used, item.limit, isCount ? "count" : "bytes")}
-                            </p>
-                          </div>
-                        );
-                      })}
                     </div>
                     <div className="mt-5 grid gap-3 sm:grid-cols-2">
                       <button
