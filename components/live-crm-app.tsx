@@ -17,7 +17,6 @@ import {
   LogOut,
   MessageSquareText,
   Package,
-  PanelLeft,
   Pencil,
   Phone,
   Plus,
@@ -1176,6 +1175,12 @@ export function LiveCrmApp() {
   const calendarOrders = crm.orders.filter((order) => order.deadline_at);
   const selectedCalendarCustomer = crm.customers.find((customer) => customer.id === calendarForm.customer_id);
   const selectedCalendarOrder = crm.orders.find((order) => order.id === calendarForm.order_id);
+  const todayLabel = new Intl.DateTimeFormat("bg-BG", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    weekday: "long"
+  }).format(new Date());
   const showStats = activeView === "Dashboard";
   const showCustomerForm = activeView === "Dashboard" || activeView === "Clients";
   const showOrderForm = activeView === "Dashboard";
@@ -1294,16 +1299,17 @@ export function LiveCrmApp() {
   }
 
   return (
-    <main className="min-h-screen pb-24 lg:pb-0">
+    <main className="min-h-screen bg-soft pb-24 lg:pb-0">
       <div className="flex min-h-screen">
         <aside className="glass-panel sticky top-0 hidden h-screen w-72 shrink-0 flex-col justify-between p-5 lg:flex">
           <div>
             <div className="mb-8 flex items-center gap-3">
-              <div className="grid h-11 w-11 place-items-center rounded-xl bg-ink text-white shadow-subtle">
-                <PanelLeft size={21} />
+              <div className="grid h-11 w-11 place-items-center rounded-[14px] bg-gradient-to-br from-ink to-[#2D5A87] text-sm font-extrabold text-white shadow-subtle">
+                PP
               </div>
               <div>
-                <h1 className="text-xl font-bold text-ink">AI CRM на живо</h1>
+                <h1 className="text-lg font-extrabold leading-tight text-ink">PrintPilot</h1>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted">AI CRM</p>
               </div>
             </div>
             <nav className="space-y-1">
@@ -1326,7 +1332,7 @@ export function LiveCrmApp() {
           </div>
           <div className="rounded-2xl border border-line bg-white p-4 shadow-subtle">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-ink">
-              <Sparkles size={17} className="text-violet" />
+              <Sparkles size={17} className="text-coral" />
               Статус на връзката
             </div>
             <p className="text-sm leading-6 text-muted">
@@ -1341,18 +1347,18 @@ export function LiveCrmApp() {
             <div className="flex items-center justify-between gap-2">
               <div className="flex min-w-0 items-center gap-2">
                 <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-ink text-white">
-                  <PanelLeft size={17} />
+                  <span className="text-xs font-extrabold">PP</span>
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-base font-bold leading-tight text-ink">{navLabels[activeView]}</p>
-                  <p className="truncate text-[11px] font-semibold uppercase tracking-wide text-muted">AI CRM на живо</p>
+                  <p className="truncate text-[11px] font-semibold uppercase tracking-wide text-muted">PrintPilot AI CRM</p>
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => setMobileSearchOpen((open) => !open)}
-                  className={`grid h-10 w-10 place-items-center rounded-xl border border-line ${mobileSearchOpen ? "bg-ink text-white" : "text-ink"}`}
+                  className={`grid h-10 w-10 place-items-center rounded-xl border border-line ${mobileSearchOpen ? "bg-ink text-white" : "bg-white text-ink"}`}
                   title="Търсене"
                 >
                   <Search size={18} />
@@ -1360,7 +1366,7 @@ export function LiveCrmApp() {
                 <button
                   type="button"
                   onClick={loadCrm}
-                  className="grid h-10 w-10 place-items-center rounded-xl border border-line text-ink"
+                  className="grid h-10 w-10 place-items-center rounded-xl border border-line bg-white text-ink"
                   title="Обнови"
                 >
                   <RefreshCw size={18} />
@@ -1368,7 +1374,7 @@ export function LiveCrmApp() {
                 <button
                   type="button"
                   onClick={runAiAnalysis}
-                  className="grid h-10 w-10 place-items-center rounded-xl bg-ink text-white"
+                  className="grid h-10 w-10 place-items-center rounded-xl bg-coral text-white"
                   title="AI анализ"
                 >
                   {aiLoading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
@@ -1395,14 +1401,17 @@ export function LiveCrmApp() {
           </header>
 
           {/* Десктоп хедър */}
-          <header className="mb-5 hidden rounded-2xl border border-line bg-white p-4 shadow-subtle lg:block">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <header className="hero-gradient mb-5 hidden overflow-hidden rounded-[28px] p-7 text-white shadow-premium lg:block">
+            <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
               <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-accent">Табло на собственика</p>
-                <h2 className="mt-1 text-2xl font-bold text-ink sm:text-3xl">Команден център за печатно производство</h2>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-white/60">{todayLabel}</p>
+                <h2 className="mt-2 text-2xl font-extrabold text-white sm:text-4xl">Команден център за печатно производство</h2>
+                <p className="mt-2 max-w-3xl text-base text-white/80">
+                  Активни поръчки: <strong className="text-coral">{activeOrders.length}</strong> · Клиенти: <strong className="text-coral">{crm.customers.length}</strong> · Данък частни лица: <strong className="text-coral">{currency(privateTaxDue)}</strong>
+                </p>
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <label className="flex min-w-0 items-center gap-2 rounded-xl border border-line bg-soft px-3 py-2 text-sm text-muted">
+                <label className="flex min-w-0 items-center gap-2 rounded-xl border border-white/15 bg-white/95 px-3 py-2 text-sm text-muted shadow-subtle">
                   <Search size={17} />
                   <input
                     value={search}
@@ -1413,14 +1422,14 @@ export function LiveCrmApp() {
                 </label>
                 <button
                   onClick={loadCrm}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-ink hover:bg-soft"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white ring-1 ring-white/20 hover:bg-white/20"
                 >
                   <RefreshCw size={17} />
                   Обнови
                 </button>
                 <button
                   onClick={runAiAnalysis}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-ink px-4 py-2.5 text-sm font-semibold text-white shadow-subtle hover:bg-slate-800"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-coral px-4 py-2.5 text-sm font-semibold text-white shadow-subtle hover:bg-orange-600"
                 >
                   {aiLoading ? <Loader2 size={17} className="animate-spin" /> : <Sparkles size={17} />}
                   Анализирай
@@ -1428,7 +1437,7 @@ export function LiveCrmApp() {
               </div>
             </div>
             {message && (
-              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+              <div className="mt-4 rounded-xl border border-white/20 bg-white/15 px-4 py-3 text-sm font-medium text-white">
                 {message}
               </div>
             )}
@@ -1468,12 +1477,15 @@ export function LiveCrmApp() {
                 {statCards.map((stat) => {
                   const Icon = stat.icon;
                   return (
-                    <article key={stat.label} className="premium-card rounded-2xl p-3 sm:p-4">
-                      <div className="mb-2 flex items-center justify-between sm:mb-4">
-                        <span className="text-xs font-medium text-muted sm:text-sm">{stat.label}</span>
-                        <Icon size={18} className={`shrink-0 ${stat.tone}`} />
+                    <article key={stat.label} className="premium-card cursor-grab rounded-2xl p-4 sm:p-5">
+                      <div className="mb-3 flex items-center justify-between gap-3 sm:mb-4">
+                        <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${stat.tone.includes("rose") ? "bg-red-50" : stat.tone.includes("teal") || stat.tone.includes("emerald") ? "bg-emerald-50" : stat.tone.includes("coral") ? "bg-orange-50" : stat.tone.includes("violet") ? "bg-violet-50" : "bg-blue-50"}`}>
+                          <Icon size={18} className={`shrink-0 ${stat.tone}`} />
+                        </div>
+                        <span className="rounded-full bg-orange-50 px-2.5 py-1 text-[11px] font-bold text-coral">на живо</span>
                       </div>
-                      <strong className="block truncate text-lg font-bold text-ink sm:text-2xl">{stat.value}</strong>
+                      <span className="block text-xs font-semibold text-muted sm:text-sm">{stat.label}</span>
+                      <strong className="mt-1 block truncate text-lg font-extrabold text-ink sm:text-2xl">{stat.value}</strong>
                     </article>
                   );
                 })}
